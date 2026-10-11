@@ -11,6 +11,26 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum Role {
+  ADMIN
+  EMPLEADOR
+  ESPECIALISTA
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  password           String
+  name               String?
+  role               Role      @default(EMPLEADOR)
+  twoFactorCode      String?
+  twoFactorExpiresAt DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@map("users")
+}
+
 // Modelo de prueba base para verificar conexión y migraciones
 model TestModel {
   id        String   @id @default(uuid())
