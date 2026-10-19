@@ -53,7 +53,9 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`Usuario registrado exitosamente: ${user.email} con rol ${user.role}`);
+    this.logger.log(
+      `Usuario registrado exitosamente: ${user.email} con rol ${user.role}`,
+    );
     return user;
   }
 
@@ -74,7 +76,9 @@ export class AuthService {
     }
 
     // Generar PIN de 6 dígitos para 2FA
-    const twoFactorCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const twoFactorCode = Math.floor(
+      100000 + Math.random() * 900000,
+    ).toString();
     const twoFactorExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutos de validez
 
     await this.prisma.user.update({
@@ -110,7 +114,9 @@ export class AuthService {
     }
 
     if (!user.twoFactorExpiresAt || user.twoFactorExpiresAt < new Date()) {
-      throw new UnauthorizedException('El código de verificación 2FA ha expirado');
+      throw new UnauthorizedException(
+        'El código de verificación 2FA ha expirado',
+      );
     }
 
     // Limpiar el código 2FA una vez usado exitosamente

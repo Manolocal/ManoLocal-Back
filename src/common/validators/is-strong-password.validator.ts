@@ -12,7 +12,7 @@ export function IsStrongPassword(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: unknown) {
           if (typeof value !== 'string') return false;
           // Al menos 8 caracteres, 1 mayúscula, 1 minúscula, 1 número y 1 carácter especial
           const regex =

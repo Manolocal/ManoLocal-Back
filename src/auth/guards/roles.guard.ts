@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Role } from '../../common/enums/role.enum';
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -22,7 +23,7 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
+    const { user } = context.switchToHttp().getRequest<{ user?: AuthUser }>();
 
     if (!user || !user.role) {
       throw new ForbiddenException(

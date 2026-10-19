@@ -13,8 +13,8 @@ export function IsValidRole(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
-          return Object.values(Role).includes(value);
+        validate(value: unknown) {
+          return (Object.values(Role) as string[]).includes(value as string);
         },
         defaultMessage(args: ValidationArguments) {
           const allowedRoles = Object.values(Role).join(', ');

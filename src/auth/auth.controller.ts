@@ -16,10 +16,11 @@ import { RolesGuard } from './guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
+import type { AuthUser } from '../common/interfaces/auth-user.interface';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) { }
+  constructor(private readonly authService: AuthService) {}
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
@@ -40,14 +41,14 @@ export class AuthController {
 
   @Get('profile')
   @UseGuards(JwtAuthGuard)
-  getProfile(@CurrentUser() user: any) {
+  getProfile(@CurrentUser() user: AuthUser) {
     return user;
   }
 
   @Get('admin-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  adminOnly(@CurrentUser() user: any) {
+  adminOnly(@CurrentUser() user: AuthUser) {
     return {
       message: 'Acceso concedido exclusivamente para administradores',
       user,
@@ -57,7 +58,7 @@ export class AuthController {
   @Get('empleador-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.EMPLEADOR)
-  empleadorOnly(@CurrentUser() user: any) {
+  empleadorOnly(@CurrentUser() user: AuthUser) {
     return {
       message: 'Acceso concedido exclusivamente para empleadores',
       user,
@@ -67,7 +68,7 @@ export class AuthController {
   @Get('especialista-only')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ESPECIALISTA)
-  especialistaOnly(@CurrentUser() user: any) {
+  especialistaOnly(@CurrentUser() user: AuthUser) {
     return {
       message: 'Acceso concedido exclusivamente para especialistas',
       user,
