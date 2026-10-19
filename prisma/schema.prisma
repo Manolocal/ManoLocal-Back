@@ -17,26 +17,58 @@ enum Role {
   ESPECIALISTA
 }
 
+// Estados del ciclo de vida de una cuenta (BACK-03):
+// INACTIVO -> PENDIENTE_VALIDACION (datos + KYC completos) -> ACTIVO (aprobación manual, BACK-11)
+enum UserStatus {
+  INACTIVO
+  PENDIENTE_VALIDACION
+  ACTIVO
+}
+
 model User {
-  id                 String    @id @default(uuid())
-  email              String    @unique
+  id                 String     @id @default(uuid())
+  email              String     @unique
   password           String
   name               String?
-  role               Role      @default(EMPLEADOR)
+  role               Role       @default(EMPLEADOR)
+  status             UserStatus @default(INACTIVO)
   twoFactorCode      String?
   twoFactorExpiresAt DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  profile    Profile?
+  knowledges Knowledge[]
 
   @@map("users")
 }
 
-// Modelo de prueba base para verificar conexión y migraciones
-model TestModel {
+// Datos personales y documentos de identidad (KYC) del usuario
+model Profile {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName   String?
+  phone      String?
+  address    String?
+  postalCode String?
+  ineUrl     String?
+  selfieUrl  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("profiles")
+}
+
+// Conocimientos/oficios que un ESPECIALISTA sabe realizar
+model Knowledge {
   id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  @@map("test_models")
+  @@index([userId])
+
+  @@map("knowledges")
 }

@@ -3,12 +3,12 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Role } from '../../common/enums/role.enum';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
 
 export interface JwtPayload {
   sub: string;
   email: string;
-  role: Role;
+  role: string;
 }
 
 @Injectable()
@@ -21,11 +21,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey:
-        configService.get<string>('JWT_SECRET') || 'super-secret-key-change-in-production',
+        configService.get<string>('JWT_SECRET') ||
+        'super-secret-key-change-in-production',
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload): Promise<AuthUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: {
@@ -33,11 +34,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         email: true,
         name: true,
         role: true,
+        status: true,
       },
     });
 
     if (!user) {
-      throw new UnauthorizedException('Token inválido o el usuario ya no existe');
+      throw new UnauthorizedException(
+        'Token inválido o el usuario ya no existe',
+      );
     }
 
     return user;
