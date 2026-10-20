@@ -25,6 +25,13 @@ enum UserStatus {
   ACTIVO
 }
 
+// Estados de validación de documentos que respaldan un conocimiento (BACK-04)
+enum DocumentVerificationStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
 model User {
   id                 String     @id @default(uuid())
   email              String     @unique
@@ -68,7 +75,29 @@ model Knowledge {
   name      String
   createdAt DateTime @default(now())
 
+  verifications DocumentVerification[]
+
   @@index([userId])
 
   @@map("knowledges")
+}
+
+// Documento (diploma/certificado) subido para respaldar un conocimiento.
+// El motor de IA/OCR (BACK-04) procesa el archivo y actualiza `status`.
+model DocumentVerification {
+  id          String                   @id @default(uuid())
+  knowledgeId String
+  knowledge   Knowledge                @relation(fields: [knowledgeId], references: [id], onDelete: Cascade)
+  fileUrl     String
+  status      DocumentVerificationStatus @default(PENDING)
+  provider    String?
+  score       Float?
+  reason      String?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@index([knowledgeId])
+  @@index([status])
+
+  @@map("document_verifications")
 }
