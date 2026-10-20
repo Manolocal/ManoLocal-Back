@@ -9,9 +9,6 @@ import * as bcrypt from 'bcrypt';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: PrismaService;
-  let mailService: MailService;
-  let jwtService: JwtService;
 
   const mockPrismaService = {
     user: {
@@ -40,9 +37,6 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    prisma = module.get<PrismaService>(PrismaService);
-    mailService = module.get<MailService>(MailService);
-    jwtService = module.get<JwtService>(JwtService);
     jest.clearAllMocks();
   });
 
@@ -52,7 +46,10 @@ describe('AuthService', () => {
 
   describe('register', () => {
     it('should throw ConflictException if email is already in use', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({ id: '1', email: 'test@test.com' });
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: '1',
+        email: 'test@test.com',
+      });
 
       await expect(
         service.register({
@@ -104,7 +101,10 @@ describe('AuthService', () => {
       });
 
       await expect(
-        service.login({ email: 'test@test.com', password: 'WrongPassword123!' }),
+        service.login({
+          email: 'test@test.com',
+          password: 'WrongPassword123!',
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -122,14 +122,12 @@ describe('AuthService', () => {
 
       expect(result.email).toBe('test@test.com');
       expect(result.message).toContain('2FA');
-      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 'u-1' },
-          data: expect.objectContaining({
-            twoFactorCode: expect.stringMatching(/^[0-9]{6}$/),
-          }),
-        }),
-      );
+      const userUpdateMock = mockPrismaService.user.update;
+      const [updateArgs] = userUpdateMock.mock.calls as Array<
+        [{ where: { id: string }; data: { twoFactorCode: string } }]
+      >;
+      expect(updateArgs[0].where.id).toBe('u-1');
+      expect(updateArgs[0].data.twoFactorCode).toMatch(/^[0-9]{6}$/);
       expect(mockMailService.sendTwoFactorCode).toHaveBeenCalledWith(
         'test@test.com',
         expect.stringMatching(/^[0-9]{6}$/),

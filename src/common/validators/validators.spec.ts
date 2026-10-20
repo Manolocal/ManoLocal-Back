@@ -20,7 +20,7 @@ describe('Custom Validators', () => {
     const dto = new RegisterDto();
     dto.email = 'valid@example.com';
     dto.password = 'StrongPass123!';
-    dto.role = 'INVALID_ROLE' as any;
+    dto.role = 'INVALID_ROLE' as unknown as Role;
 
     const errors = await validate(dto);
     const roleError = errors.find((e) => e.property === 'role');

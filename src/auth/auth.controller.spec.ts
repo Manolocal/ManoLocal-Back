@@ -5,7 +5,6 @@ import { Role } from '../common/enums/role.enum';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: AuthService;
 
   const mockAuthService = {
     register: jest.fn(),
@@ -16,13 +15,10 @@ describe('AuthController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [
-        { provide: AuthService, useValue: mockAuthService },
-      ],
+      providers: [{ provide: AuthService, useValue: mockAuthService }],
     }).compile();
 
     controller = module.get<AuthController>(AuthController);
-    authService = module.get<AuthService>(AuthService);
     jest.clearAllMocks();
   });
 
@@ -75,12 +71,20 @@ describe('AuthController', () => {
 
   describe('protected endpoints', () => {
     it('getProfile should return current user', () => {
-      const mockUser = { id: '1', email: 'test@example.com', role: Role.EMPLEADOR };
+      const mockUser = {
+        id: '1',
+        email: 'test@example.com',
+        role: Role.EMPLEADOR,
+      };
       expect(controller.getProfile(mockUser)).toEqual(mockUser);
     });
 
     it('adminOnly should return message with current admin user', () => {
-      const mockAdmin = { id: '1', email: 'admin@example.com', role: Role.ADMIN };
+      const mockAdmin = {
+        id: '1',
+        email: 'admin@example.com',
+        role: Role.ADMIN,
+      };
       const response = controller.adminOnly(mockAdmin);
       expect(response.message).toContain('administradores');
       expect(response.user).toEqual(mockAdmin);

@@ -12,15 +12,16 @@ export interface StandardResponse<T> {
 }
 
 @Injectable()
-export class ResponseInterceptor<T>
-  implements NestInterceptor<T, StandardResponse<T>>
-{
+export class ResponseInterceptor<T> implements NestInterceptor<
+  T,
+  StandardResponse<T>
+> {
   intercept(
     context: ExecutionContext,
     next: CallHandler,
   ): Observable<StandardResponse<T>> {
     return next.handle().pipe(
-      map((data) => ({
+      map((data: T) => ({
         data,
       })),
     );

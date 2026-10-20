@@ -4,7 +4,10 @@ import { IsStrongPassword } from '../../common/validators/is-strong-password.val
 import { IsValidRole } from '../../common/validators/is-valid-role.validator';
 
 export class RegisterDto {
-  @IsEmail({}, { message: 'El correo electrónico debe ser una dirección válida' })
+  @IsEmail(
+    {},
+    { message: 'El correo electrónico debe ser una dirección válida' },
+  )
   @IsNotEmpty({ message: 'El correo electrónico es requerido' })
   email: string;
 

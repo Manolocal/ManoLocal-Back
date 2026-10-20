@@ -2,6 +2,7 @@ import { Reflector } from '@nestjs/core';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { RolesGuard } from './roles.guard';
 import { Role } from '../../common/enums/role.enum';
+import type { AuthUser } from '../../common/interfaces/auth-user.interface';
 
 describe('RolesGuard', () => {
   let guard: RolesGuard;
@@ -12,7 +13,7 @@ describe('RolesGuard', () => {
     guard = new RolesGuard(reflector);
   });
 
-  function createMockContext(user: any): ExecutionContext {
+  function createMockContext(user: Partial<AuthUser> | null): ExecutionContext {
     return {
       getHandler: jest.fn(),
       getClass: jest.fn(),
