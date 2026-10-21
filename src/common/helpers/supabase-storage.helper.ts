@@ -11,6 +11,8 @@ export interface UploadFileOptions {
   folder?: string;
   /** Bucket de Supabase Storage a usar. Por defecto, el definido en `SUPABASE_STORAGE_BUCKET` */
   bucket?: string;
+  /** Sobrescribir el archivo si ya existe en esa ruta. Por defecto `false`. */
+  upsert?: boolean;
 }
 
 /**
@@ -67,7 +69,7 @@ export class SupabaseStorageHelper {
       .from(bucket)
       .upload(objectPath, file.buffer, {
         contentType: file.mimetype,
-        upsert: false,
+        upsert: options.upsert ?? false,
       });
 
     if (error) {

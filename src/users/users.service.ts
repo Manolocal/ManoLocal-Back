@@ -19,7 +19,21 @@ const USER_COMPLETION_SELECT = {
   createdAt: true,
   profile: true,
   knowledges: {
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      verifications: {
+        select: {
+          id: true,
+          status: true,
+          provider: true,
+          score: true,
+          fileUrl: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' as const },
+      },
+    },
     orderBy: { createdAt: 'asc' as const },
   },
 };

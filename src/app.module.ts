@@ -8,6 +8,7 @@ import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { KycModule } from './kyc/kyc.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { KycModule } from './kyc/kyc.module';
     AuthModule,
     UsersModule,
     KycModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
