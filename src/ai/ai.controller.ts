@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -23,11 +24,11 @@ import type { AuthUser } from '../common/interfaces/auth-user.interface';
 const DOCUMENT_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 @Controller('ai')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
   @Post('verify-document')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ESPECIALISTA)
   @UseInterceptors(
     FileInterceptor('document', {
@@ -44,10 +45,30 @@ export class AiController {
   }
 
   @Get('knowledge/:knowledgeId/verifications')
+  @UseGuards(JwtAuthGuard)
   getKnowledgeVerifications(
     @CurrentUser('id') userId: string,
     @Param('knowledgeId', new ParseUUIDPipe()) knowledgeId: string,
   ) {
     return this.aiService.getKnowledgeVerifications(userId, knowledgeId);
+  }
+
+  @Get('status')
+  getStatus() {
+    return {
+      provider: 'google-gemini',
+      isConfigured: this.aiService.isGeminiConfigured(),
+      model: this.aiService.getGeminiModelName(),
+    };
+  }
+
+  @Post('generate-text')
+  @UseGuards(JwtAuthGuard)
+  async generateText(@Body() body: { prompt?: string }) {
+    if (!body?.prompt || typeof body.prompt !== 'string') {
+      throw new BadRequestException('El campo "prompt" es requerido');
+    }
+    const response = await this.aiService.generateText(body.prompt);
+    return { prompt: body.prompt, response };
   }
 }
