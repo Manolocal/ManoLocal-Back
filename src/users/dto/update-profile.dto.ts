@@ -1,4 +1,8 @@
-import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsPhoneNumberMx,
+  IsPostalCodeMx,
+} from '../../common/validators';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -9,10 +13,7 @@ export class UpdateProfileDto {
   fullName?: string;
 
   @IsOptional()
-  @IsString({ message: 'El teléfono debe ser una cadena de texto' })
-  @Matches(/^\+?[0-9\s-]{10,15}$/, {
-    message: 'El teléfono debe ser un número válido (ej. 55 1234 5678)',
-  })
+  @IsPhoneNumberMx()
   phone?: string;
 
   @IsOptional()
@@ -21,9 +22,6 @@ export class UpdateProfileDto {
   address?: string;
 
   @IsOptional()
-  @IsString({ message: 'El código postal debe ser una cadena de texto' })
-  @Matches(/^[0-9]{5}$/, {
-    message: 'El código postal debe tener exactamente 5 dígitos',
-  })
+  @IsPostalCodeMx()
   postalCode?: string;
 }

@@ -1,10 +1,11 @@
-/** Entrada del motor de OCR */
 export interface DocumentValidationInput {
   /** URL pública/persistida del documento a analizar */
   fileUrl: string;
   /** Nombre del conocimiento que el documento debe respaldar */
   knowledgeName: string;
   mimeType?: string;
+  /** Buffer del archivo en memoria para análisis directo multimodal */
+  fileBuffer?: Buffer;
 }
 
 /** Resultado de una verificación de documento */
@@ -22,9 +23,8 @@ export interface DocumentValidationResult {
 /**
  * Contrato del motor de validación de documentos.
  *
- * Hoy lo implementa `MockOcrProvider`; en fases futuras se podrá conectar
- * Gemini/OpenAI/OpenCV implementando esta misma interfaz, sin tocar el
- * `AiService` ni el resto de la lógica de negocio.
+ * Implementado por `GeminiOcrProvider` (visión multimodal con Google Gemini)
+ * y desacoplado de `AiService` mediante inyección de dependencias.
  */
 export const OCR_PROVIDER = 'OCR_PROVIDER';
 

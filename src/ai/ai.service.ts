@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseStorageHelper } from '../common/helpers/supabase-storage.helper';
@@ -12,6 +13,7 @@ import { DocumentVerificationStatus } from '../common/enums/document-verificatio
 import { OCR_PROVIDER } from './interfaces/ocr-provider.interface';
 import type { OcrProvider } from './interfaces/ocr-provider.interface';
 import { VerifyDocumentDto } from './dto/verify-document.dto';
+import { GeminiService, GenerateOptions } from './gemini.service';
 
 @Injectable()
 export class AiService {
@@ -19,6 +21,7 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly storage: SupabaseStorageHelper,
     @Inject(OCR_PROVIDER) private readonly ocrProvider: OcrProvider,
+    @Optional() private readonly geminiService?: GeminiService,
   ) {}
 
   /**
@@ -69,6 +72,7 @@ export class AiService {
       fileUrl,
       knowledgeName: knowledge.name,
       mimeType: file.mimetype,
+      fileBuffer: file.buffer,
     });
 
     const verification = await this.prisma.documentVerification.create({
@@ -118,5 +122,62 @@ export class AiService {
       where: { knowledgeId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  // =========================================================================
+  // MÉTODOS GENERALES DE IA (Para uso en cualquier módulo del sistema)
+  // =========================================================================
+
+  /** Indica si la API de Gemini está configurada y lista en el sistema. */
+  isGeminiConfigured(): boolean {
+    return this.geminiService?.isAvailable() ?? false;
+  }
+
+  /** Obtiene el modelo Gemini configurado actualmente. */
+  getGeminiModelName(): string {
+    return this.geminiService?.getModelName() ?? 'gemini-2.5-flash';
+  }
+
+  /**
+   * Generación de texto general con Gemini.
+   * Útil para: resúmenes, descripciones de oficios, asistencia en disputas, etc.
+   */
+  async generateText(
+    prompt: string,
+    options?: GenerateOptions,
+  ): Promise<string> {
+    if (!this.geminiService || !this.geminiService.isAvailable()) {
+      return `[Mock AI Response] ${prompt.substring(0, 80)}...`;
+    }
+    return this.geminiService.generateText(prompt, options);
+  }
+
+  /**
+   * Generación estructurada en JSON con Gemini.
+   * Útil para: clasificación, extracción de entidades, moderación de reseñas, etc.
+   */
+  async generateJson<T>(
+    prompt: string,
+    options?: GenerateOptions,
+  ): Promise<T> {
+    if (!this.geminiService || !this.geminiService.isAvailable()) {
+      return { mock: true, prompt: prompt.substring(0, 50) } as unknown as T;
+    }
+    return this.geminiService.generateJson<T>(prompt, options);
+  }
+
+  /**
+   * Análisis multimodal de imágenes o documentos con Gemini Vision.
+   */
+  async analyzeFile(
+    fileBuffer: Buffer,
+    mimeType: string,
+    prompt: string,
+    options?: GenerateOptions,
+  ): Promise<string> {
+    if (!this.geminiService || !this.geminiService.isAvailable()) {
+      return `[Mock Vision Analysis] Archivo de tipo ${mimeType} analizado correctamente.`;
+    }
+    return this.geminiService.analyzeFile(fileBuffer, mimeType, prompt, options);
   }
 }

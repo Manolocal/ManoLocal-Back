@@ -1,18 +1,21 @@
 import { Module } from '@nestjs/common';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
-import { MockOcrProvider } from './providers/mock-ocr.provider';
+import { GeminiService } from './gemini.service';
+import { GeminiOcrProvider } from './providers/gemini-ocr.provider';
 import { OCR_PROVIDER } from './interfaces/ocr-provider.interface';
 
 @Module({
   controllers: [AiController],
   providers: [
-    AiService,
+    GeminiService,
+    GeminiOcrProvider,
     {
       provide: OCR_PROVIDER,
-      useClass: MockOcrProvider,
+      useClass: GeminiOcrProvider,
     },
+    AiService,
   ],
-  exports: [AiService],
+  exports: [AiService, GeminiService],
 })
 export class AiModule {}
