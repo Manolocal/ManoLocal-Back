@@ -41,3 +41,6 @@ coverage
 *.sw?
 
 /generated/prisma
+
+# Datos masivos de SEPOMEX
+CPdescarga.txt

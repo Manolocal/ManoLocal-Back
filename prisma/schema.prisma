@@ -101,3 +101,29 @@ model DocumentVerification {
 
   @@map("document_verifications")
 }
+
+// Catálogo Maestro Nacional de Códigos Postales SEPOMEX (BACK-05)
+// Fuente oficial del Servicio Postal Mexicano (Correos de México)
+model SepomexPostalCode {
+  id             Int     @id @default(autoincrement())
+  postalCode     String  @map("d_codigo") @db.VarChar(10)
+  asentamiento   String  @map("d_asenta") @db.VarChar(150)
+  tipoAsenta     String? @map("d_tipo_asenta") @db.VarChar(60)
+  municipio      String  @map("d_mnpio") @db.VarChar(100)
+  estado         String  @map("d_estado") @db.VarChar(60)
+  ciudad         String? @map("d_ciudad") @db.VarChar(100)
+  dCp            String? @map("d_cp") @db.VarChar(10)
+  cEstado        String? @map("c_estado") @db.VarChar(10)
+  cOficina       String? @map("c_oficina") @db.VarChar(10)
+  cCp            String? @map("c_cp") @db.VarChar(10)
+  cTipoAsenta    String? @map("c_tipo_asenta") @db.VarChar(10)
+  cMnpio         String? @map("c_mnpio") @db.VarChar(10)
+  idAsentaCpcons String? @map("id_asenta_cpcons") @db.VarChar(10)
+  zona           String? @map("d_zona") @db.VarChar(30)
+  cCveCiudad     String? @map("c_cve_ciudad") @db.VarChar(10)
+
+  @@index([postalCode])
+  @@index([municipio])
+  @@index([estado])
+  @@map("sepomex_postal_codes")
+}
