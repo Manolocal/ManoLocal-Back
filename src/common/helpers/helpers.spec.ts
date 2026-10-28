@@ -4,6 +4,8 @@ import {
 } from './pagination.helper';
 import { StringSanitizer } from './string-sanitizer.helper';
 import { DateHelper } from './date.helper';
+import { SupabaseStorageHelper } from './supabase-storage.helper';
+import { ConfigService } from '@nestjs/config';
 
 describe('Common Helpers', () => {
   describe('PaginationHelper', () => {
@@ -67,6 +69,98 @@ describe('Common Helpers', () => {
 
       const in2Days = DateHelper.addDays(2, now);
       expect(in2Days.getTime() - now.getTime()).toBe(2 * 24 * 60 * 60 * 1000);
+    });
+  });
+
+  describe('SupabaseStorageHelper', () => {
+    let configService: ConfigService;
+
+    it('should warn and disable client if env variables are missing', async () => {
+      configService = {
+        get: jest.fn((key: string) => {
+          if (key === 'SUPABASE_STORAGE_BUCKET') return 'kyc';
+          if (key === 'SUPABASE_CATALOG_BUCKET') return 'catalog';
+          return undefined;
+        }),
+      } as unknown as ConfigService;
+
+      const helper = new SupabaseStorageHelper(configService);
+      expect(helper.getCatalogBucket()).toBe('catalog');
+
+      await expect(
+        helper.uploadFile({ originalname: 'test.jpg' } as any),
+      ).rejects.toThrow('El servicio de almacenamiento no está configurado');
+
+      await expect(helper.createSignedUrl('test.jpg')).rejects.toThrow(
+        'El servicio de almacenamiento no está configurado',
+      );
+
+      await expect(helper.deleteFile('test.jpg')).rejects.toThrow(
+        'El servicio de almacenamiento no está configurado',
+      );
+    });
+
+    it('should operate correctly when client is configured', async () => {
+      const mockUpload = jest.fn().mockResolvedValue({ error: null });
+      const mockGetPublicUrl = jest.fn().mockReturnValue({
+        data: { publicUrl: 'https://supabase.co/storage/v1/object/public/catalog/file.jpg' },
+      });
+      const mockCreateSignedUrl = jest.fn().mockResolvedValue({
+        data: { signedUrl: 'https://supabase.co/storage/v1/object/sign/kyc/file.pdf?token=abc' },
+        error: null,
+      });
+      const mockRemove = jest.fn().mockResolvedValue({ error: null });
+
+      const mockFrom = jest.fn().mockReturnValue({
+        upload: mockUpload,
+        getPublicUrl: mockGetPublicUrl,
+        createSignedUrl: mockCreateSignedUrl,
+        remove: mockRemove,
+      });
+
+      configService = {
+        get: jest.fn((key: string) => {
+          if (key === 'SUPABASE_URL') return 'https://test.supabase.co';
+          if (key === 'SUPABASE_SERVICE_ROLE_KEY') return 'test-key';
+          if (key === 'SUPABASE_STORAGE_BUCKET') return 'kyc';
+          if (key === 'SUPABASE_CATALOG_BUCKET') return 'catalog';
+          return undefined;
+        }),
+      } as unknown as ConfigService;
+
+      const helper = new SupabaseStorageHelper(configService);
+      (helper as any).client = {
+        storage: {
+          from: mockFrom,
+        },
+      };
+
+      // Test uploadFile
+      const fakeFile = {
+        originalname: 'Foto Trabajo.PNG',
+        mimetype: 'image/png',
+        buffer: Buffer.from('fake-data'),
+      } as Express.Multer.File;
+
+      const publicUrl = await helper.uploadFile(fakeFile, {
+        bucket: 'catalog',
+        folder: 'catalog/user-123',
+      });
+      expect(publicUrl).toBe('https://supabase.co/storage/v1/object/public/catalog/file.jpg');
+      expect(mockFrom).toHaveBeenCalledWith('catalog');
+
+      // Test createSignedUrl with relative path
+      const signedUrl = await helper.createSignedUrl('kyc/user-123/ine.pdf', 1800, 'kyc');
+      expect(signedUrl).toContain('token=abc');
+      expect(mockCreateSignedUrl).toHaveBeenCalledWith('kyc/user-123/ine.pdf', 1800);
+
+      // Test createSignedUrl with full URL
+      await helper.createSignedUrl('https://supabase.co/storage/v1/object/public/kyc/doc.pdf', 3600);
+      expect(mockCreateSignedUrl).toHaveBeenCalledWith('doc.pdf', 3600);
+
+      // Test deleteFile
+      await helper.deleteFile('catalog/user-123/image.webp', 'catalog');
+      expect(mockRemove).toHaveBeenCalledWith(['catalog/user-123/image.webp']);
     });
   });
 });
