@@ -8,6 +8,7 @@ import {
   TimeoutInterceptor,
 } from './common/interceptors';
 import { TrimStringsPipe } from './common/pipes/trim-strings.pipe';
+import { setupSwagger } from './common/swagger/swagger.config';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -35,8 +36,12 @@ async function bootstrap() {
     new ResponseInterceptor(),
   );
 
+  // Documentación interactiva Swagger / OpenAPI
+  setupSwagger(app);
+
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
   logger.log(`Application is running on: http://localhost:${port}`);
+  logger.log(`Swagger docs available at: http://localhost:${port}/docs`);
 }
 void bootstrap();

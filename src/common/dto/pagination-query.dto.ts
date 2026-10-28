@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEnum,
   IsInt,
@@ -18,12 +19,14 @@ export enum SortOrder {
  * Reutilizable en cualquier endpoint de listado (directorio, trabajos, reseñas, historial).
  */
 export class PaginationQueryDto {
+  @ApiPropertyOptional({ description: 'Número de página', default: 1, example: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'La página debe ser un número entero' })
   @Min(1, { message: 'La página mínima es 1' })
   page?: number = 1;
 
+  @ApiPropertyOptional({ description: 'Cantidad de elementos por página', default: 10, example: 10 })
   @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'El límite debe ser un número entero' })

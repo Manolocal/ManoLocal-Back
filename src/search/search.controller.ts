@@ -13,7 +13,10 @@ import { Role } from '../common/enums/role.enum';
 import { SearchService } from './services/search.service';
 import { CopomexService } from './services/copomex.service';
 import { SearchSpecialistsDto } from './dto/search-specialists.dto';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 
+@ApiTags('Búsqueda & Geolocalización')
+@ApiBearerAuth('JWT-Auth')
 @Controller('search')
 export class SearchController {
   constructor(
@@ -24,6 +27,11 @@ export class SearchController {
   /**
    * Búsqueda geolocalizada de especialistas (BACK-05).
    */
+  @ApiOperation({
+    summary: 'Buscar especialistas por oficio y geofiltro de municipio (SEPOMEX / Copomex)',
+    description:
+      'Detecta automáticamente el Código Postal del perfil del empleador autenticado (o permite especificar uno) y filtra especialistas dentro del mismo municipio que posean el oficio buscado.',
+  })
   @Get('specialists')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.EMPLEADOR, Role.ADMIN)
@@ -37,6 +45,9 @@ export class SearchController {
   /**
    * Endpoint de diagnóstico e información geográfica (BACK-05).
    */
+  @ApiOperation({
+    summary: 'Consultar información geográfica y lista de CPs municipales de un Código Postal',
+  })
   @Get('geo-info/:cp')
   @UseGuards(JwtAuthGuard)
   async getGeoInfo(@Param('cp') cp: string) {
