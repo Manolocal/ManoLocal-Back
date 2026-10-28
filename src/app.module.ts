@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { KycModule } from './kyc/kyc.module';
 import { AiModule } from './ai/ai.module';
 import { SearchModule } from './search/search.module';
+import { CatalogModule } from './catalog/catalog.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SearchModule } from './search/search.module';
     KycModule,
     AiModule,
     SearchModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

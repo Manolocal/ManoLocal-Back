@@ -486,6 +486,7 @@ export function setupSwagger(app: INestApplication): void {
     )
     .addTag('Autenticación', 'Registro de usuarios (ADMIN, EMPLEADOR, ESPECIALISTA), login y verificación 2FA')
     .addTag('Usuarios & Perfiles', 'Consulta y actualización de perfil, teléfono, dirección y oficios')
+    .addTag('Catálogo de Trabajos', 'Galería de fotos de trabajos realizados por especialistas (límite de 10 fotos activas)')
     .addTag('Búsqueda & Geolocalización', 'Búsqueda geolocalizada de especialistas y resolución municipal')
     .addTag('Inteligencia Artificial', 'OCR y validación de certificaciones con Gemini AI')
     .addTag('Verificación KYC', 'Subida de documentos de identidad (INE y selfie)')
