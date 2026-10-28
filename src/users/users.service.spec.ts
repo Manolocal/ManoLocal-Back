@@ -283,6 +283,28 @@ describe('UsersService', () => {
       expect(mockPrismaService.user.update).not.toHaveBeenCalled();
     });
 
+    it('should auto-activate an ADMIN to ACTIVO when personal data and KYC are complete', async () => {
+      buildPrismaState({
+        role: Role.ADMIN,
+        profile: {
+          fullName: 'Admin General',
+          phone: '5512345678',
+          address: 'Av. Siempre Viva 123',
+          postalCode: '01000',
+          ineUrl: 'https://supabase.co/kyc/ine.png',
+          selfieUrl: 'https://supabase.co/kyc/selfie.png',
+        },
+      });
+
+      const result = await service.refreshStatus('admin-1');
+
+      expect(result).toBe(UserStatus.ACTIVO);
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 'admin-1' },
+        data: { status: UserStatus.ACTIVO },
+      });
+    });
+
     it('should throw NotFoundException if the user no longer exists', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(null);
 

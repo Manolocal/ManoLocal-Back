@@ -53,6 +53,18 @@ export class UsersService {
       throw new NotFoundException('Usuario no encontrado');
     }
 
+    // Auto-activación inmediata para ADMIN si está en PENDIENTE_VALIDACION
+    if (
+      user.role === Role.ADMIN &&
+      user.status === UserStatus.PENDIENTE_VALIDACION
+    ) {
+      const updatedStatus = await this.refreshStatus(userId);
+      return {
+        ...user,
+        status: updatedStatus,
+      };
+    }
+
     return user;
   }
 
@@ -151,8 +163,10 @@ export class UsersService {
    * - Documentos KYC (INE + selfie) subidos.
    * - Al menos un conocimiento (solo aplica a ESPECIALISTA).
    *
-   * Si todo está completo pasa a PENDIENTE_VALIDACION (aprobación manual en BACK-11);
-   * un usuario ya aprobado (ACTIVO) nunca se degrada.
+   * Si todo está completo:
+   * - Si es ADMIN: Se auto-activa a ACTIVO (no requiere validación manual externa).
+   * - Otros roles: Pasa a PENDIENTE_VALIDACION (aprobación manual en BACK-11).
+   * Un usuario ya aprobado (ACTIVO) nunca se degrada.
    */
   async refreshStatus(userId: string): Promise<UserStatus> {
     const [user, profile, knowledgeCount] = await Promise.all([
@@ -191,10 +205,14 @@ export class UsersService {
     const knowledgeComplete =
       user.role !== Role.ESPECIALISTA || knowledgeCount > 0;
 
-    const targetStatus =
-      personalDataComplete && kycComplete && knowledgeComplete
-        ? UserStatus.PENDIENTE_VALIDACION
-        : UserStatus.INACTIVO;
+    const isFullyCompleted =
+      personalDataComplete && kycComplete && knowledgeComplete;
+
+    const targetStatus = isFullyCompleted
+      ? user.role === Role.ADMIN
+        ? UserStatus.ACTIVO
+        : UserStatus.PENDIENTE_VALIDACION
+      : UserStatus.INACTIVO;
 
     if (user.status !== targetStatus) {
       await this.prisma.user.update({

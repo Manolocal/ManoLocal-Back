@@ -5,8 +5,14 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateKnowledgeDto {
+  @ApiProperty({
+    description: 'Lista de nombres de conocimientos u oficios',
+    example: ['Plomero residencial', 'Reparación de calentadores', 'Instalación de tuberías'],
+    type: [String],
+  })
   @IsArray({ message: 'Los conocimientos deben enviarse como una lista' })
   @ArrayNotEmpty({ message: 'Debe registrar al menos un conocimiento' })
   @ArrayMaxSize(50, {

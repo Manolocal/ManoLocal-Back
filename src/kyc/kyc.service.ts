@@ -20,9 +20,9 @@ export class KycService {
    * Sube la foto del INE y la selfie a Supabase Storage, guarda las URLs
    * públicas en el perfil del usuario y recalcula su estatus.
    */
-  async uploadDocuments(userId: string, files: KycFiles) {
-    const ine = files.ine?.[0];
-    const selfie = files.selfie?.[0];
+  async uploadDocuments(userId: string, files?: KycFiles) {
+    const ine = files?.ine?.[0];
+    const selfie = files?.selfie?.[0];
 
     if (!ine || !selfie) {
       throw new BadRequestException(
