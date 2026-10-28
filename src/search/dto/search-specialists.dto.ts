@@ -1,0 +1,20 @@
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { IsPostalCodeMx } from '../../common/validators/is-postal-code-mx.validator';
+
+export class SearchSpecialistsDto extends PaginationQueryDto {
+  /**
+   * Nombre o término clave del oficio o conocimiento buscado (ej: 'Plomero', 'Electricista').
+   */
+  @IsNotEmpty({ message: 'El término de búsqueda (oficio/conocimiento) es requerido' })
+  @IsString({ message: 'El término de búsqueda debe ser una cadena de texto' })
+  skill: string;
+
+  /**
+   * Código Postal opcional para realizar la búsqueda en una ubicación específica distinta
+   * a la del perfil registrado del empleador.
+   */
+  @IsOptional()
+  @IsPostalCodeMx({ message: 'El código postal debe tener 5 dígitos numéricos válidos de México' })
+  postalCode?: string;
+}

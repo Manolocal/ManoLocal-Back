@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { KycModule } from './kyc/kyc.module';
 import { AiModule } from './ai/ai.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AiModule } from './ai/ai.module';
     UsersModule,
     KycModule,
     AiModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],
