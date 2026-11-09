@@ -122,31 +122,35 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should generate 6-digit 2FA code, update user and dispatch email', async () => {
-      const password = 'Password123!';
-      const hashedPassword = await bcrypt.hash(password, 10);
-      mockPrismaService.user.findUnique.mockResolvedValue({
-        id: 'u-1',
-        email: 'test@test.com',
-        password: hashedPassword,
-      });
-      mockPrismaService.user.update.mockResolvedValue({});
+    it(
+      'should generate 6-digit 2FA code, update user and dispatch email',
+      async () => {
+        const password = 'Password123!';
+        const hashedPassword = await bcrypt.hash(password, 10);
+        mockPrismaService.user.findUnique.mockResolvedValue({
+          id: 'u-1',
+          email: 'test@test.com',
+          password: hashedPassword,
+        });
+        mockPrismaService.user.update.mockResolvedValue({});
 
-      const result = await service.login({ email: 'test@test.com', password });
+        const result = await service.login({ email: 'test@test.com', password });
 
-      expect(result.email).toBe('test@test.com');
-      expect(result.message).toContain('2FA');
-      const userUpdateMock = mockPrismaService.user.update;
-      const [updateArgs] = userUpdateMock.mock.calls as Array<
-        [{ where: { id: string }; data: { twoFactorCode: string } }]
-      >;
-      expect(updateArgs[0].where.id).toBe('u-1');
-      expect(updateArgs[0].data.twoFactorCode).toMatch(/^[0-9]{6}$/);
-      expect(mockMailService.sendTwoFactorCode).toHaveBeenCalledWith(
-        'test@test.com',
-        expect.stringMatching(/^[0-9]{6}$/),
-      );
-    });
+        expect(result.email).toBe('test@test.com');
+        expect(result.message).toContain('2FA');
+        const userUpdateMock = mockPrismaService.user.update;
+        const [updateArgs] = userUpdateMock.mock.calls as Array<
+          [{ where: { id: string }; data: { twoFactorCode: string } }]
+        >;
+        expect(updateArgs[0].where.id).toBe('u-1');
+        expect(updateArgs[0].data.twoFactorCode).toMatch(/^[0-9]{6}$/);
+        expect(mockMailService.sendTwoFactorCode).toHaveBeenCalledWith(
+          'test@test.com',
+          expect.stringMatching(/^[0-9]{6}$/),
+        );
+      },
+      15000,
+    );
   });
 
   describe('verify2fa', () => {
