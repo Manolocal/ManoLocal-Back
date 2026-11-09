@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../mail/mail.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { Role } from '../common/enums/role.enum';
 import * as bcrypt from 'bcrypt';
@@ -26,6 +27,10 @@ describe('AuthService', () => {
     sendTwoFactorCode: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockEventEmitter = {
+    emit: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -33,6 +38,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: MailService, useValue: mockMailService },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 
@@ -80,6 +86,14 @@ describe('AuthService', () => {
       expect(result.id).toBe('u-1');
       expect(result.email).toBe('test@test.com');
       expect(mockPrismaService.user.create).toHaveBeenCalled();
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'user.created',
+        expect.objectContaining({
+          userId: 'u-1',
+          email: 'test@test.com',
+          role: Role.EMPLEADOR,
+        }),
+      );
     });
   });
 
