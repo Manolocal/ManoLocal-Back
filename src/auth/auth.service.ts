@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
@@ -12,6 +13,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { Verify2faDto } from './dto/verify-2fa.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { UserCreatedEvent } from '../common/events/user-created.event';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +23,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async register(registerDto: RegisterDto) {
@@ -56,6 +59,13 @@ export class AuthService {
     this.logger.log(
       `Usuario registrado exitosamente: ${user.email} con rol ${user.role}`,
     );
+
+    // Disparar evento desacoplado para creación automática de billetera u otros hooks (BACK-08)
+    this.eventEmitter.emit(
+      'user.created',
+      new UserCreatedEvent(user.id, user.email, user.role),
+    );
+
     return user;
   }
 

@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { MailService } from '../mail/mail.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { Role } from '../common/enums/role.enum';
 import * as bcrypt from 'bcrypt';
@@ -26,6 +27,10 @@ describe('AuthService', () => {
     sendTwoFactorCode: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockEventEmitter = {
+    emit: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -33,6 +38,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: MailService, useValue: mockMailService },
+        { provide: EventEmitter2, useValue: mockEventEmitter },
       ],
     }).compile();
 
@@ -80,6 +86,14 @@ describe('AuthService', () => {
       expect(result.id).toBe('u-1');
       expect(result.email).toBe('test@test.com');
       expect(mockPrismaService.user.create).toHaveBeenCalled();
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'user.created',
+        expect.objectContaining({
+          userId: 'u-1',
+          email: 'test@test.com',
+          role: Role.EMPLEADOR,
+        }),
+      );
     });
   });
 
@@ -108,31 +122,35 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should generate 6-digit 2FA code, update user and dispatch email', async () => {
-      const password = 'Password123!';
-      const hashedPassword = await bcrypt.hash(password, 10);
-      mockPrismaService.user.findUnique.mockResolvedValue({
-        id: 'u-1',
-        email: 'test@test.com',
-        password: hashedPassword,
-      });
-      mockPrismaService.user.update.mockResolvedValue({});
+    it(
+      'should generate 6-digit 2FA code, update user and dispatch email',
+      async () => {
+        const password = 'Password123!';
+        const hashedPassword = await bcrypt.hash(password, 10);
+        mockPrismaService.user.findUnique.mockResolvedValue({
+          id: 'u-1',
+          email: 'test@test.com',
+          password: hashedPassword,
+        });
+        mockPrismaService.user.update.mockResolvedValue({});
 
-      const result = await service.login({ email: 'test@test.com', password });
+        const result = await service.login({ email: 'test@test.com', password });
 
-      expect(result.email).toBe('test@test.com');
-      expect(result.message).toContain('2FA');
-      const userUpdateMock = mockPrismaService.user.update;
-      const [updateArgs] = userUpdateMock.mock.calls as Array<
-        [{ where: { id: string }; data: { twoFactorCode: string } }]
-      >;
-      expect(updateArgs[0].where.id).toBe('u-1');
-      expect(updateArgs[0].data.twoFactorCode).toMatch(/^[0-9]{6}$/);
-      expect(mockMailService.sendTwoFactorCode).toHaveBeenCalledWith(
-        'test@test.com',
-        expect.stringMatching(/^[0-9]{6}$/),
-      );
-    });
+        expect(result.email).toBe('test@test.com');
+        expect(result.message).toContain('2FA');
+        const userUpdateMock = mockPrismaService.user.update;
+        const [updateArgs] = userUpdateMock.mock.calls as Array<
+          [{ where: { id: string }; data: { twoFactorCode: string } }]
+        >;
+        expect(updateArgs[0].where.id).toBe('u-1');
+        expect(updateArgs[0].data.twoFactorCode).toMatch(/^[0-9]{6}$/);
+        expect(mockMailService.sendTwoFactorCode).toHaveBeenCalledWith(
+          'test@test.com',
+          expect.stringMatching(/^[0-9]{6}$/),
+        );
+      },
+      15000,
+    );
   });
 
   describe('verify2fa', () => {

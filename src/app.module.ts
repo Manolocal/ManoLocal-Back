@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -12,12 +13,14 @@ import { AiModule } from './ai/ai.module';
 import { SearchModule } from './search/search.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ChatModule } from './chat/chat.module';
+import { WalletModule } from './wallet/wallet.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    EventEmitterModule.forRoot(),
     PrismaModule,
     CommonModule,
     MailModule,
@@ -28,6 +31,7 @@ import { ChatModule } from './chat/chat.module';
     SearchModule,
     CatalogModule,
     ChatModule,
+    WalletModule,
   ],
   controllers: [AppController],
   providers: [AppService],
