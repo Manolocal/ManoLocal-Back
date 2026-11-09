@@ -47,6 +47,9 @@ model User {
   profile    Profile?
   knowledges    Knowledge[]
   catalogImages CatalogImage[]
+  employerRooms   ChatRoom[] @relation("EmployerRooms")
+  specialistRooms ChatRoom[] @relation("SpecialistRooms")
+  sentMessages    Message[]  @relation("UserSentMessages")
 
   @@map("users")
 }
@@ -144,4 +147,40 @@ model SepomexPostalCode {
   @@index([municipio])
   @@index([estado])
   @@map("sepomex_postal_codes")
+}
+
+// Sala privada de chat entre un Empleador y un Especialista (BACK-07)
+model ChatRoom {
+  id           String    @id @default(uuid())
+  employerId   String    @map("employer_id")
+  specialistId String    @map("specialist_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  employer   User      @relation("EmployerRooms", fields: [employerId], references: [id], onDelete: Cascade)
+  specialist User      @relation("SpecialistRooms", fields: [specialistId], references: [id], onDelete: Cascade)
+  messages   Message[]
+
+  @@unique([employerId, specialistId])
+  @@index([employerId])
+  @@index([specialistId])
+  @@map("chat_rooms")
+}
+
+// Mensaje intercambiado dentro de una sala de chat (BACK-07)
+model Message {
+  id        String   @id @default(uuid())
+  roomId    String   @map("room_id")
+  senderId  String   @map("sender_id")
+  content   String   @db.Text
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender User     @relation("UserSentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("messages")
 }
