@@ -47,6 +47,7 @@ model User {
   profile    Profile?
   knowledges    Knowledge[]
   catalogImages CatalogImage[]
+  wallet        Wallet?
 
   @@map("users")
 }
@@ -144,4 +145,44 @@ model SepomexPostalCode {
   @@index([municipio])
   @@index([estado])
   @@map("sepomex_postal_codes")
+}
+
+// Tipos de transacciones monetarias en la Billetera (BACK-08)
+enum TransactionType {
+  RECARGA
+  PAGO
+  CONGELAMIENTO
+  DEVOLUCION
+}
+
+// Billetera Virtual del Especialista (BACK-08)
+model Wallet {
+  id                String        @id @default(uuid())
+  userId            String        @unique @map("user_id")
+  balanceDisponible Decimal       @default(0.0) @map("balance_disponible") @db.Decimal(12, 2)
+  balanceCongelado  Decimal       @default(0.0) @map("balance_congelado") @db.Decimal(12, 2)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+
+  @@map("wallets")
+}
+
+// Historial de movimientos / transacciones de la Billetera (BACK-08)
+model Transaction {
+  id          String          @id @default(uuid())
+  walletId    String          @map("wallet_id")
+  monto       Decimal         @map("monto") @db.Decimal(12, 2)
+  tipo        TransactionType @map("tipo")
+  descripcion String?         @map("descripcion") @db.VarChar(255)
+  fecha       DateTime        @default(now()) @map("fecha")
+
+  wallet      Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@index([tipo])
+  @@index([fecha])
+  @@map("transactions")
 }
