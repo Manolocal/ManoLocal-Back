@@ -11,6 +11,7 @@ import { KycModule } from './kyc/kyc.module';
 import { AiModule } from './ai/ai.module';
 import { SearchModule } from './search/search.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CatalogModule } from './catalog/catalog.module';
     AiModule,
     SearchModule,
     CatalogModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],
