@@ -12,6 +12,7 @@ import { KycModule } from './kyc/kyc.module';
 import { AiModule } from './ai/ai.module';
 import { SearchModule } from './search/search.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { WalletModule } from './wallet/wallet.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { CatalogModule } from './catalog/catalog.module';
     AiModule,
     SearchModule,
     CatalogModule,
+    WalletModule,
   ],
   controllers: [AppController],
   providers: [AppService],
