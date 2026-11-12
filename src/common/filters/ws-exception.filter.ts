@@ -6,7 +6,9 @@ export interface WsErrorPayload {
   event: string;
   statusCode: number;
   error: string;
+  code?: string;
   message: string | string[] | object;
+  details?: Record<string, unknown>;
   timestamp: string;
 }
 
@@ -29,6 +31,8 @@ export class WsExceptionFilter extends BaseWsExceptionFilter {
     let statusCode = 400;
     let errorName = 'WsException';
     let message: string | string[] | object = 'Error en la conexión WebSocket';
+    let code: string | undefined;
+    let details: Record<string, unknown> | undefined;
 
     if (exception instanceof WsException) {
       const error = exception.getError();
@@ -44,6 +48,12 @@ export class WsExceptionFilter extends BaseWsExceptionFilter {
         if (typeof errorObj.statusCode === 'number') {
           statusCode = errorObj.statusCode;
         }
+        if (typeof errorObj.code === 'string') {
+          code = errorObj.code;
+        }
+        if (typeof errorObj.details === 'object' && errorObj.details !== null) {
+          details = errorObj.details as Record<string, unknown>;
+        }
       }
     } else if (exception instanceof HttpException) {
       statusCode = exception.getStatus();
@@ -54,6 +64,12 @@ export class WsExceptionFilter extends BaseWsExceptionFilter {
         message = (resObj.message as string | string[]) || exception.message;
         if (typeof resObj.error === 'string') {
           errorName = resObj.error;
+        }
+        if (typeof resObj.code === 'string') {
+          code = resObj.code;
+        }
+        if (typeof resObj.details === 'object' && resObj.details !== null) {
+          details = resObj.details as Record<string, unknown>;
         }
       } else if (typeof res === 'string') {
         message = res;
@@ -72,7 +88,9 @@ export class WsExceptionFilter extends BaseWsExceptionFilter {
       event: 'error',
       statusCode,
       error: errorName,
+      ...(code && { code }),
       message,
+      ...(details && { details }),
       timestamp: new Date().toISOString(),
     };
 

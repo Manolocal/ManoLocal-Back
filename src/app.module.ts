@@ -14,6 +14,7 @@ import { SearchModule } from './search/search.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ChatModule } from './chat/chat.module';
 import { WalletModule } from './wallet/wallet.module';
+import { JobsModule } from './jobs/jobs.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { WalletModule } from './wallet/wallet.module';
     CatalogModule,
     ChatModule,
     WalletModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

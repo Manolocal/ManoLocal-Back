@@ -1,14 +1,23 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import type { Socket } from 'socket.io';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { WsJwtGuard } from './guards/ws-jwt.guard';
 import { Role } from '../common/enums/role.enum';
 import { UserStatus } from '../common/enums/user-status.enum';
+import { JobsService } from '../jobs/jobs.service';
+import { JobStateChangedEvent } from '../common/events/job-state-changed.event';
 
 describe('ChatGateway', () => {
   let gateway: ChatGateway;
   let chatService: jest.Mocked<ChatService>;
   let wsJwtGuard: jest.Mocked<WsJwtGuard>;
+  let jobsService: {
+    createJob: jest.Mock;
+    confirmJob: jest.Mock;
+    completeJob: jest.Mock;
+    cancelJob: jest.Mock;
+  };
 
   const mockUser = {
     id: 'user-1',
@@ -35,6 +44,13 @@ describe('ChatGateway', () => {
       validateSocket: jest.fn(),
     };
 
+    const mockJobsService = {
+      createJob: jest.fn(),
+      confirmJob: jest.fn(),
+      completeJob: jest.fn(),
+      cancelJob: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ChatGateway,
@@ -46,6 +62,10 @@ describe('ChatGateway', () => {
           provide: WsJwtGuard,
           useValue: mockWsJwtGuard,
         },
+        {
+          provide: JobsService,
+          useValue: mockJobsService,
+        },
       ],
     })
       .overrideGuard(WsJwtGuard)
@@ -55,12 +75,13 @@ describe('ChatGateway', () => {
     gateway = module.get<ChatGateway>(ChatGateway);
     chatService = module.get(ChatService);
     wsJwtGuard = module.get(WsJwtGuard);
+    jobsService = module.get(JobsService);
     gateway.server = mockServer as any;
   });
 
   describe('handleConnection', () => {
     it('should authenticate client and assign user to client.data', async () => {
-      wsJwtGuard.validateSocket.mockResolvedValue(mockUser as any);
+      wsJwtGuard.validateSocket.mockResolvedValue(mockUser);
       const mockClient = {
         id: 'socket-1',
         data: {},
@@ -136,7 +157,7 @@ describe('ChatGateway', () => {
         },
       };
 
-      chatService.saveMessage.mockResolvedValue(mockSavedMessage as any);
+      chatService.saveMessage.mockResolvedValue(mockSavedMessage);
 
       const mockClient = {
         data: { user: mockUser },
@@ -186,6 +207,109 @@ describe('ChatGateway', () => {
       expect(result).toEqual({
         event: 'room_messages',
         data: mockHistory,
+      });
+    });
+  });
+
+  describe('job agreement chat events (BACK-09)', () => {
+    it('should broadcast job_updated to chat room on job.state_changed event', () => {
+      const event = new JobStateChangedEvent(
+        'job_updated',
+        'CONFIRMED',
+        'room-123',
+        'spec-1',
+        { id: 'job-1', status: 'CONFIRMED' },
+        '2026-01-01T12:00:00.000Z',
+      );
+
+      gateway.handleJobStateChanged(event);
+
+      expect(mockServer.to).toHaveBeenCalledWith('room-123');
+      expect(mockServer.emit).toHaveBeenCalledWith('job_updated', {
+        action: 'CONFIRMED',
+        roomId: 'room-123',
+        job: { id: 'job-1', status: 'CONFIRMED' },
+        actorId: 'spec-1',
+        timestamp: '2026-01-01T12:00:00.000Z',
+      });
+    });
+
+    it('should handle create_job event via JobsService', async () => {
+      const mockCreated = { message: 'ok', job: { id: 'job-1' } };
+      jobsService.createJob.mockResolvedValue(mockCreated);
+      const mockClient = {
+        data: { user: mockUser },
+      } as unknown as Socket;
+
+      const result = await gateway.handleCreateJob(mockClient, {
+        roomId: 'room-123',
+        title: 'Plomería',
+      });
+
+      expect(jobsService.createJob).toHaveBeenCalledWith('user-1', {
+        roomId: 'room-123',
+        title: 'Plomería',
+      });
+      expect(result).toEqual({
+        event: 'job_created_ack',
+        data: mockCreated,
+      });
+    });
+
+    it('should handle confirm_job event via JobsService', async () => {
+      const mockConfirmed = { job: { id: 'job-1', status: 'CONFIRMED' } };
+      jobsService.confirmJob.mockResolvedValue(mockConfirmed);
+      const mockClient = {
+        data: { user: mockUser },
+      } as unknown as Socket;
+
+      const result = await gateway.handleConfirmJob(mockClient, {
+        jobId: 'job-1',
+      });
+
+      expect(jobsService.confirmJob).toHaveBeenCalledWith('user-1', 'job-1');
+      expect(result).toEqual({
+        event: 'job_confirmed',
+        data: mockConfirmed,
+      });
+    });
+
+    it('should handle complete_job event via JobsService', async () => {
+      const mockCompleted = { job: { id: 'job-1', status: 'COMPLETED' } };
+      jobsService.completeJob.mockResolvedValue(mockCompleted);
+      const mockClient = {
+        data: { user: mockUser },
+      } as unknown as Socket;
+
+      const result = await gateway.handleCompleteJob(mockClient, {
+        jobId: 'job-1',
+      });
+
+      expect(jobsService.completeJob).toHaveBeenCalledWith('user-1', 'job-1');
+      expect(result).toEqual({
+        event: 'job_completed',
+        data: mockCompleted,
+      });
+    });
+
+    it('should handle cancel_job event via JobsService', async () => {
+      const mockCancelled = { job: { id: 'job-1', status: 'CANCELLED' } };
+      jobsService.cancelJob.mockResolvedValue(mockCancelled);
+      const mockClient = {
+        data: { user: mockUser },
+      } as unknown as Socket;
+
+      const result = await gateway.handleCancelJob(mockClient, {
+        jobId: 'job-1',
+        reason: 'Cambio de horario',
+      });
+
+      expect(jobsService.cancelJob).toHaveBeenCalledWith('user-1', 'job-1', {
+        reason: 'Cambio de horario',
+      });
+      expect(result).toEqual({
+        event: 'job_cancelled',
+        data: mockCancelled,
       });
     });
   });

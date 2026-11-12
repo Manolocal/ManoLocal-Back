@@ -32,6 +32,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] | object = 'Error interno del servidor';
     let errorName = 'Internal Server Error';
+    let code: string | undefined;
+    let details: Record<string, unknown> | undefined;
 
     // 1. Excepciones HTTP estándar de NestJS
     if (exception instanceof HttpException) {
@@ -46,6 +48,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
         }
         if ('error' in resObj && typeof resObj.error === 'string') {
           errorName = resObj.error;
+        }
+        if ('code' in resObj && typeof resObj.code === 'string') {
+          code = resObj.code;
+        }
+        if (
+          'details' in resObj &&
+          typeof resObj.details === 'object' &&
+          resObj.details !== null
+        ) {
+          details = resObj.details as Record<string, unknown>;
         }
       } else if (typeof res === 'string') {
         message = res;
@@ -91,7 +103,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
           statusCode = HttpStatus.BAD_REQUEST;
           errorName = 'Database Error';
           message = `Error en la base de datos (${exception.code})`;
-          this.logger.error(`Prisma error [${exception.code}]: ${exception.message}`);
+          this.logger.error(
+            `Prisma error [${exception.code}]: ${exception.message}`,
+          );
           break;
         }
       }
@@ -100,12 +114,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
     else if (exception instanceof Prisma.PrismaClientValidationError) {
       statusCode = HttpStatus.BAD_REQUEST;
       errorName = 'Bad Request';
-      message = 'Los datos enviados no corresponden con la estructura esperada por la base de datos';
+      message =
+        'Los datos enviados no corresponden con la estructura esperada por la base de datos';
       this.logger.warn(`Prisma Validation Error: ${exception.message}`);
     }
     // 4. Errores generales de JavaScript (Error estándar)
     else if (exception instanceof Error) {
-      this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
+      this.logger.error(
+        `Unhandled error: ${exception.message}`,
+        exception.stack,
+      );
       message = exception.message;
     }
     // 5. Excepciones no tipadas
@@ -119,6 +137,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       statusCode,
       message,
       error: errorName,
+      ...(code && { code }),
+      ...(details && { details }),
       path,
       timestamp: new Date().toISOString(),
     });
