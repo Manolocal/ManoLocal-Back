@@ -158,9 +158,10 @@ model ChatRoom {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  employer   User      @relation("EmployerRooms", fields: [employerId], references: [id], onDelete: Cascade)
-  specialist User      @relation("SpecialistRooms", fields: [specialistId], references: [id], onDelete: Cascade)
-  messages   Message[]
+  employer      User           @relation("EmployerRooms", fields: [employerId], references: [id], onDelete: Cascade)
+  specialist    User           @relation("SpecialistRooms", fields: [specialistId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  jobAgreements JobAgreement[]
 
   @@unique([employerId, specialistId])
   @@index([employerId])
@@ -184,6 +185,41 @@ model Message {
   @@index([senderId])
   @@index([createdAt])
   @@map("messages")
+}
+
+// Estados del ciclo de vida de un acuerdo de trabajo (BACK-09)
+enum JobStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+// Acuerdo de trabajo formalizado dentro de una sala de chat (BACK-09)
+model JobAgreement {
+  id                 String    @id @default(uuid())
+  roomId             String    @map("room_id")
+  title              String?   @map("title") @db.VarChar(120)
+  description        String?   @map("description") @db.VarChar(500)
+  agreedPrice        Decimal?  @map("agreed_price") @db.Decimal(12, 2)
+  feeAmount          Decimal   @default(50.0) @map("fee_amount") @db.Decimal(12, 2)
+  status             JobStatus @default(PENDING) @map("status")
+  createdById        String?   @map("created_by_id")
+  cancelledById      String?   @map("cancelled_by_id")
+  cancellationReason String?   @map("cancellation_reason") @db.VarChar(255)
+  confirmedAt        DateTime? @map("confirmed_at")
+  completedAt        DateTime? @map("completed_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  room         ChatRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([roomId])
+  @@index([status])
+  @@index([roomId, status])
+  @@map("job_agreements")
 }
 
 // Tipos de transacciones monetarias en la Billetera (BACK-08)
@@ -211,16 +247,19 @@ model Wallet {
 
 // Historial de movimientos / transacciones de la Billetera (BACK-08)
 model Transaction {
-  id          String          @id @default(uuid())
-  walletId    String          @map("wallet_id")
-  monto       Decimal         @map("monto") @db.Decimal(12, 2)
-  tipo        TransactionType @map("tipo")
-  descripcion String?         @map("descripcion") @db.VarChar(255)
-  fecha       DateTime        @default(now()) @map("fecha")
+  id             String          @id @default(uuid())
+  walletId       String          @map("wallet_id")
+  jobAgreementId String?         @map("job_agreement_id")
+  monto          Decimal         @map("monto") @db.Decimal(12, 2)
+  tipo           TransactionType @map("tipo")
+  descripcion    String?         @map("descripcion") @db.VarChar(255)
+  fecha          DateTime        @default(now()) @map("fecha")
 
-  wallet      Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet         Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  jobAgreement   JobAgreement?   @relation(fields: [jobAgreementId], references: [id], onDelete: SetNull)
 
   @@index([walletId])
+  @@index([jobAgreementId])
   @@index([tipo])
   @@index([fecha])
   @@map("transactions")

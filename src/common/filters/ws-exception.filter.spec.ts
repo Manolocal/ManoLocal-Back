@@ -1,6 +1,7 @@
 import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
 import { WsExceptionFilter } from './ws-exception.filter';
+import { InsufficientBalanceException } from '../exceptions/insufficient-balance.exception';
 
 describe('WsExceptionFilter', () => {
   let filter: WsExceptionFilter;
@@ -85,6 +86,28 @@ describe('WsExceptionFilter', () => {
         statusCode: 400,
         error: 'Error',
         message: 'Database connection failed',
+      }),
+    );
+  });
+
+  it('should emit structured 402 error payload for InsufficientBalanceException', () => {
+    const exception = new InsufficientBalanceException(50, 15);
+
+    filter.catch(exception, mockHost);
+
+    expect(mockClient.emit).toHaveBeenCalledWith(
+      'error',
+      expect.objectContaining({
+        event: 'error',
+        statusCode: 402,
+        error: 'Payment Required',
+        code: 'INSUFFICIENT_BALANCE',
+        details: {
+          requiredAmount: 50,
+          availableBalance: 15,
+          missingAmount: 35,
+          currency: 'MXN',
+        },
       }),
     );
   });

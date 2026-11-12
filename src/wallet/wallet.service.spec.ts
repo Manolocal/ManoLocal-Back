@@ -1,14 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, TransactionType } from '@prisma/client';
 import { Role } from '../common/enums/role.enum';
 import { UserCreatedEvent } from '../common/events/user-created.event';
+import { TransactionManager } from '../common/database/transaction.manager';
+import { InsufficientBalanceException } from '../common/exceptions/insufficient-balance.exception';
 
 describe('WalletService', () => {
   let service: WalletService;
   let prisma: jest.Mocked<PrismaService>;
+  let mockTransactionManager: {
+    runInTransaction: jest.Mock;
+    resolveClient: jest.Mock;
+  };
 
   const mockWallet = {
     id: 'wallet-uuid-1',
@@ -23,8 +33,10 @@ describe('WalletService', () => {
     const mockPrisma = {
       wallet: {
         findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       transaction: {
         count: jest.fn(),
@@ -37,12 +49,23 @@ describe('WalletService', () => {
       $transaction: jest.fn((cb) => cb(mockPrisma)),
     };
 
+    mockTransactionManager = {
+      runInTransaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) =>
+        cb(mockPrisma),
+      ),
+      resolveClient: jest.fn((tx?: unknown) => tx ?? mockPrisma),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WalletService,
         {
           provide: PrismaService,
           useValue: mockPrisma,
+        },
+        {
+          provide: TransactionManager,
+          useValue: mockTransactionManager,
         },
       ],
     }).compile();
@@ -255,6 +278,162 @@ describe('WalletService', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('freezeBalance', () => {
+    it('should freeze amount from available to frozen balance and log CONGELAMIENTO', async () => {
+      const updatedWallet = {
+        ...mockWallet,
+        balanceDisponible: new Prisma.Decimal(450.0),
+        balanceCongelado: new Prisma.Decimal(150.0),
+      };
+      (prisma.wallet.findUnique as jest.Mock).mockResolvedValue(mockWallet);
+      (prisma.wallet.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+      (prisma.wallet.findUniqueOrThrow as jest.Mock).mockResolvedValue(
+        updatedWallet,
+      );
+      (prisma.transaction.create as jest.Mock).mockResolvedValue({
+        id: 'tx-freeze-1',
+        walletId: mockWallet.id,
+        jobAgreementId: 'job-1',
+        monto: new Prisma.Decimal(50.0),
+        tipo: TransactionType.CONGELAMIENTO,
+        descripcion: 'Congelamiento',
+        fecha: new Date(),
+      });
+
+      const result = await service.freezeBalance({
+        userId: 'user-uuid-1',
+        amount: 50,
+        jobAgreementId: 'job-1',
+      });
+
+      expect(prisma.wallet.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: mockWallet.id,
+          balanceDisponible: { gte: new Prisma.Decimal(50) },
+        },
+        data: {
+          balanceDisponible: { decrement: new Prisma.Decimal(50) },
+          balanceCongelado: { increment: new Prisma.Decimal(50) },
+        },
+      });
+      expect(result.wallet.balanceDisponible).toBe(450);
+      expect(result.wallet.balanceCongelado).toBe(150);
+      expect(result.transaction.tipo).toBe(TransactionType.CONGELAMIENTO);
+    });
+
+    it('should throw InsufficientBalanceException (HTTP 402) when available balance is below required amount', async () => {
+      (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+        ...mockWallet,
+        balanceDisponible: new Prisma.Decimal(30.0),
+      });
+
+      await expect(
+        service.freezeBalance({ userId: 'user-uuid-1', amount: 50 }),
+      ).rejects.toThrow(InsufficientBalanceException);
+      expect(prisma.wallet.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should throw InsufficientBalanceException (HTTP 402) if specialist wallet does not exist yet', async () => {
+      (prisma.wallet.findUnique as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.freezeBalance({ userId: 'user-without-wallet', amount: 50 }),
+      ).rejects.toThrow(InsufficientBalanceException);
+    });
+
+    it('should throw InsufficientBalanceException on concurrent balance race (updateMany count 0)', async () => {
+      (prisma.wallet.findUnique as jest.Mock)
+        .mockResolvedValueOnce(mockWallet)
+        .mockResolvedValueOnce({
+          ...mockWallet,
+          balanceDisponible: new Prisma.Decimal(10.0),
+        });
+      (prisma.wallet.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.freezeBalance({ userId: 'user-uuid-1', amount: 50 }),
+      ).rejects.toThrow(InsufficientBalanceException);
+    });
+  });
+
+  describe('captureFrozenBalance', () => {
+    it('should permanently deduct frozen balance and log PAGO', async () => {
+      const updatedWallet = {
+        ...mockWallet,
+        balanceCongelado: new Prisma.Decimal(50.0),
+      };
+      (prisma.wallet.findUnique as jest.Mock).mockResolvedValue(mockWallet);
+      (prisma.wallet.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+      (prisma.wallet.findUniqueOrThrow as jest.Mock).mockResolvedValue(
+        updatedWallet,
+      );
+      (prisma.transaction.create as jest.Mock).mockResolvedValue({
+        id: 'tx-pago-1',
+        walletId: mockWallet.id,
+        jobAgreementId: 'job-1',
+        monto: new Prisma.Decimal(50.0),
+        tipo: TransactionType.PAGO,
+        descripcion: 'Pago definitivo',
+        fecha: new Date(),
+      });
+
+      const result = await service.captureFrozenBalance({
+        userId: 'user-uuid-1',
+        amount: 50,
+        jobAgreementId: 'job-1',
+      });
+
+      expect(result.wallet.balanceDisponible).toBe(500);
+      expect(result.wallet.balanceCongelado).toBe(50);
+      expect(result.transaction.tipo).toBe(TransactionType.PAGO);
+    });
+
+    it('should throw ConflictException when frozen balance is insufficient', async () => {
+      (prisma.wallet.findUnique as jest.Mock).mockResolvedValue({
+        ...mockWallet,
+        balanceCongelado: new Prisma.Decimal(20.0),
+      });
+
+      await expect(
+        service.captureFrozenBalance({ userId: 'user-uuid-1', amount: 50 }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('releaseFrozenBalance', () => {
+    it('should move frozen balance back to available balance and log DEVOLUCION', async () => {
+      const updatedWallet = {
+        ...mockWallet,
+        balanceDisponible: new Prisma.Decimal(550.0),
+        balanceCongelado: new Prisma.Decimal(50.0),
+      };
+      (prisma.wallet.findUnique as jest.Mock).mockResolvedValue(mockWallet);
+      (prisma.wallet.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+      (prisma.wallet.findUniqueOrThrow as jest.Mock).mockResolvedValue(
+        updatedWallet,
+      );
+      (prisma.transaction.create as jest.Mock).mockResolvedValue({
+        id: 'tx-refund-1',
+        walletId: mockWallet.id,
+        jobAgreementId: 'job-1',
+        monto: new Prisma.Decimal(50.0),
+        tipo: TransactionType.DEVOLUCION,
+        descripcion: 'Devolución',
+        fecha: new Date(),
+      });
+
+      const result = await service.releaseFrozenBalance({
+        userId: 'user-uuid-1',
+        amount: 50,
+        jobAgreementId: 'job-1',
+      });
+
+      expect(result.wallet.balanceDisponible).toBe(550);
+      expect(result.wallet.balanceCongelado).toBe(50);
+      expect(result.transaction.tipo).toBe(TransactionType.DEVOLUCION);
     });
   });
 });

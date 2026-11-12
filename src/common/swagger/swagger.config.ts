@@ -479,17 +479,40 @@ export function setupSwagger(app: INestApplication): void {
         scheme: 'bearer',
         bearerFormat: 'JWT',
         name: 'Authorization',
-        description: 'Pega tu token JWT aquí para acceder a endpoints protegidos (sin la palabra Bearer)',
+        description:
+          'Pega tu token JWT aquí para acceder a endpoints protegidos (sin la palabra Bearer)',
         in: 'header',
       },
       'JWT-Auth',
     )
-    .addTag('Autenticación', 'Registro de usuarios (ADMIN, EMPLEADOR, ESPECIALISTA), login y verificación 2FA')
-    .addTag('Usuarios & Perfiles', 'Consulta y actualización de perfil, teléfono, dirección y oficios')
-    .addTag('Catálogo de Trabajos', 'Galería de fotos de trabajos realizados por especialistas (límite de 10 fotos activas)')
-    .addTag('Búsqueda & Geolocalización', 'Búsqueda geolocalizada de especialistas y resolución municipal')
-    .addTag('Inteligencia Artificial', 'OCR y validación de certificaciones con Gemini AI')
-    .addTag('Verificación KYC', 'Subida de documentos de identidad (INE y selfie)')
+    .addTag(
+      'Autenticación',
+      'Registro de usuarios (ADMIN, EMPLEADOR, ESPECIALISTA), login y verificación 2FA',
+    )
+    .addTag(
+      'Usuarios & Perfiles',
+      'Consulta y actualización de perfil, teléfono, dirección y oficios',
+    )
+    .addTag(
+      'Catálogo de Trabajos',
+      'Galería de fotos de trabajos realizados por especialistas (límite de 10 fotos activas)',
+    )
+    .addTag(
+      'Trabajos',
+      'Acuerdos de trabajo vinculados al chat y gestión ACID de cuotas de garantía',
+    )
+    .addTag(
+      'Búsqueda & Geolocalización',
+      'Búsqueda geolocalizada de especialistas y resolución municipal',
+    )
+    .addTag(
+      'Inteligencia Artificial',
+      'OCR y validación de certificaciones con Gemini AI',
+    )
+    .addTag(
+      'Verificación KYC',
+      'Subida de documentos de identidad (INE y selfie)',
+    )
     .addTag('Sistema', 'Verificación de estado de la API')
     .build();
 
