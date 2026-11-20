@@ -5,6 +5,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import {
+  ExtendedPrismaClient,
+  withReviewRatingExtension,
+} from '../common/database/review-rating.extension';
 
 @Injectable()
 export class PrismaService
@@ -12,6 +16,18 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  private extendedClient: ExtendedPrismaClient | null = null;
+
+  /**
+   * Retorna la instancia extendida de Prisma Client con hooks de dominio
+   * (por ejemplo, recálculo automático de calificación promedio al crear reseñas).
+   */
+  getExtendedClient(): ExtendedPrismaClient {
+    if (!this.extendedClient) {
+      this.extendedClient = withReviewRatingExtension(this);
+    }
+    return this.extendedClient;
+  }
 
   async onModuleInit() {
     try {

@@ -51,23 +51,27 @@ model User {
   employerRooms   ChatRoom[] @relation("EmployerRooms")
   specialistRooms ChatRoom[] @relation("SpecialistRooms")
   sentMessages    Message[]  @relation("UserSentMessages")
+  reviewsGiven    Review[]   @relation("EmployerReviews")
+  reviewsReceived Review[]   @relation("SpecialistReviews")
 
   @@map("users")
 }
 
 // Datos personales y documentos de identidad (KYC) del usuario
 model Profile {
-  id         String   @id @default(uuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  fullName   String?
-  phone      String?
-  address    String?
-  postalCode String?
-  ineUrl     String?
-  selfieUrl  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName      String?
+  phone         String?
+  address       String?
+  postalCode    String?
+  ineUrl        String?
+  selfieUrl     String?
+  ratingAverage Decimal  @default(0.0) @map("rating_average") @db.Decimal(3, 2)
+  ratingCount   Int      @default(0) @map("rating_count")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@map("profiles")
 }
@@ -215,6 +219,7 @@ model JobAgreement {
 
   room         ChatRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  review       Review?
 
   @@index([roomId])
   @@index([status])
@@ -263,4 +268,23 @@ model Transaction {
   @@index([tipo])
   @@index([fecha])
   @@map("transactions")
+}
+
+// Reseñas y calificaciones públicas de trabajos completados (BACK-10)
+model Review {
+  id             String   @id @default(uuid())
+  jobAgreementId String   @unique @map("job_agreement_id")
+  employerId     String   @map("employer_id")
+  specialistId   String   @map("specialist_id")
+  rating         Int
+  comment        String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  jobAgreement   JobAgreement @relation(fields: [jobAgreementId], references: [id], onDelete: Cascade)
+  employer       User         @relation("EmployerReviews", fields: [employerId], references: [id], onDelete: Cascade)
+  specialist     User         @relation("SpecialistReviews", fields: [specialistId], references: [id], onDelete: Cascade)
+
+  @@index([specialistId, createdAt])
+  @@index([employerId])
+  @@map("reviews")
 }

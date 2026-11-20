@@ -15,6 +15,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { ChatModule } from './chat/chat.module';
 import { WalletModule } from './wallet/wallet.module';
 import { JobsModule } from './jobs/jobs.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { JobsModule } from './jobs/jobs.module';
     ChatModule,
     WalletModule,
     JobsModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

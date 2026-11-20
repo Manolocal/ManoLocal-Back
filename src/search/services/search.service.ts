@@ -168,6 +168,8 @@ export class SearchService {
               phone: true,
               address: true,
               postalCode: true,
+              ratingAverage: true,
+              ratingCount: true,
             },
           },
           knowledges: {
@@ -188,7 +190,21 @@ export class SearchService {
       }),
     ]);
 
-    const paginated = buildPaginatedResult(users, total, { page, limit });
+    const formattedSpecialists = users.map((specialist) => ({
+      ...specialist,
+      profile: specialist.profile
+        ? {
+            ...specialist.profile,
+            ratingAverage: Number(specialist.profile.ratingAverage ?? 0),
+            ratingCount: specialist.profile.ratingCount ?? 0,
+          }
+        : null,
+    }));
+
+    const paginated = buildPaginatedResult(formattedSpecialists, total, {
+      page,
+      limit,
+    });
 
     return {
       specialists: paginated.items,

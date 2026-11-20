@@ -502,6 +502,10 @@ export function setupSwagger(app: INestApplication): void {
       'Acuerdos de trabajo vinculados al chat y gestión ACID de cuotas de garantía',
     )
     .addTag(
+      'Reviews',
+      'Reseñas, calificaciones públicas (1-5 estrellas) y reputación automática de especialistas',
+    )
+    .addTag(
       'Búsqueda & Geolocalización',
       'Búsqueda geolocalizada de especialistas y resolución municipal',
     )

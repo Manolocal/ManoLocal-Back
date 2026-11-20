@@ -25,7 +25,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 
 @ApiTags('Wallet')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-Auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ESPECIALISTA, Role.ADMIN)
 @Controller('wallet')

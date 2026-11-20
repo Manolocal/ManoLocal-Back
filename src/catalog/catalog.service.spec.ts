@@ -185,6 +185,11 @@ describe('CatalogService', () => {
         name: 'Juan Perez',
         role: Role.ESPECIALISTA,
         status: UserStatus.ACTIVO,
+        profile: {
+          fullName: 'Juan Perez',
+          ratingAverage: 4.5,
+          ratingCount: 3,
+        },
       });
       mockPrismaService.catalogImage.findMany.mockResolvedValue([
         {
@@ -198,7 +203,13 @@ describe('CatalogService', () => {
       ]);
 
       const result = await service.getSpecialistImages('spec-1');
-      expect(result.specialist).toEqual({ id: 'spec-1', name: 'Juan Perez' });
+      expect(result.specialist).toEqual({
+        id: 'spec-1',
+        name: 'Juan Perez',
+        fullName: 'Juan Perez',
+        ratingAverage: 4.5,
+        ratingCount: 3,
+      });
       expect(result.images).toHaveLength(1);
     });
   });

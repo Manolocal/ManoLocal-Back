@@ -118,6 +118,13 @@ export class CatalogService {
         name: true,
         role: true,
         status: true,
+        profile: {
+          select: {
+            fullName: true,
+            ratingAverage: true,
+            ratingCount: true,
+          },
+        },
       },
     });
 
@@ -146,6 +153,9 @@ export class CatalogService {
       specialist: {
         id: specialist.id,
         name: specialist.name,
+        fullName: specialist.profile?.fullName ?? null,
+        ratingAverage: Number(specialist.profile?.ratingAverage ?? 0),
+        ratingCount: specialist.profile?.ratingCount ?? 0,
       },
       images,
     };

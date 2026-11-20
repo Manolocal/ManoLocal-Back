@@ -23,7 +23,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthUser } from '../common/interfaces/auth-user.interface';
 
 @ApiTags('Chat')
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-Auth')
 @UseGuards(JwtAuthGuard)
 @Controller('chat')
 export class ChatController {

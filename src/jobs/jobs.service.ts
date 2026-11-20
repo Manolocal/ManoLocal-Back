@@ -35,6 +35,12 @@ const JOB_WITH_ROOM_INCLUDE = {
       specialistId: true,
     },
   },
+  review: {
+    select: {
+      id: true,
+      rating: true,
+    },
+  },
 } as const;
 
 type JobAgreementRecord = {
@@ -58,6 +64,10 @@ type JobAgreementRecord = {
     employerId: string;
     specialistId: string;
   };
+  review?: {
+    id: string;
+    rating: number;
+  } | null;
 };
 
 @Injectable()
@@ -565,6 +575,8 @@ export class JobsService {
       cancelledAt: job.cancelledAt,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
+      hasReview: Boolean(job.review),
+      reviewRating: job.review?.rating ?? null,
       ...(job.room && { room: job.room }),
     };
   }
