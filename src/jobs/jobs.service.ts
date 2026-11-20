@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -7,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { JobStatus, Prisma } from '@prisma/client';
+import { JobStatus, Prisma, TransactionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   TransactionClient,
@@ -74,9 +75,23 @@ export class JobsService {
 
   /**
    * Crea un nuevo acuerdo de trabajo en estado PENDING vinculado a una sala de chat.
+   * Solo el Especialista envía la propuesta, aceptando de paso congelar la comisión ($50 MXN)
+   * en una transacción ACID hasta que el Empleador acepte, rechace o cualquiera cancele.
    */
   async createJob(userId: string, dto: CreateJobDto) {
     const room = await this.chatService.validateRoomAccess(userId, dto.roomId);
+
+    if (room.specialistId !== userId) {
+      throw new ForbiddenException(
+        'Solo el especialista de la sala puede enviar una propuesta de acuerdo de trabajo',
+      );
+    }
+
+    if (dto.acceptCommission === false) {
+      throw new BadRequestException(
+        'Debes aceptar la comisión de plataforma ($50.00 MXN) para enviar el acuerdo',
+      );
+    }
 
     const activeJob = await this.prisma.jobAgreement.findFirst({
       where: {
@@ -94,32 +109,53 @@ export class JobsService {
     }
 
     const feeAmount = this.getConfirmationFee();
-    const job = await this.prisma.jobAgreement.create({
-      data: {
-        roomId: room.id,
-        title: dto.title?.trim() || null,
-        description: dto.description?.trim() || null,
-        agreedPrice:
-          dto.agreedPrice !== undefined
-            ? new Prisma.Decimal(dto.agreedPrice)
-            : null,
-        feeAmount: new Prisma.Decimal(feeAmount),
-        status: JobStatus.PENDING,
-        createdById: userId,
-      },
-      include: JOB_WITH_ROOM_INCLUDE,
+
+    const result = await this.transactionManager.runInTransaction(async (tx) => {
+      const job = await tx.jobAgreement.create({
+        data: {
+          roomId: room.id,
+          title: dto.title?.trim() || null,
+          description: dto.description?.trim() || null,
+          agreedPrice:
+            dto.agreedPrice !== undefined
+              ? new Prisma.Decimal(dto.agreedPrice)
+              : null,
+          feeAmount: new Prisma.Decimal(feeAmount),
+          status: JobStatus.PENDING,
+          createdById: userId,
+        },
+        include: JOB_WITH_ROOM_INCLUDE,
+      });
+
+      const walletResult = await this.walletService.freezeBalance({
+        userId: room.specialistId,
+        amount: feeAmount,
+        jobAgreementId: job.id,
+        description: this.buildMovementDescription(
+          'Congelamiento de comisión al enviar acuerdo',
+          job.title,
+          job.id,
+        ),
+        tx,
+      });
+
+      return {
+        job: this.formatJob(job),
+        wallet: walletResult.wallet,
+        transaction: walletResult.transaction,
+      };
     });
 
-    const formattedJob = this.formatJob(job);
-    this.emitJobEvent('job_created', 'CREATED', room.id, userId, formattedJob);
+    this.emitJobEvent('job_created', 'CREATED', room.id, userId, result.job);
 
     this.logger.log(
-      `Acuerdo de trabajo ${job.id} creado en sala ${room.id} por usuario ${userId}`,
+      `Acuerdo ${result.job.id} enviado por especialista ${userId} en sala ${room.id}. Comisión congelada: $${feeAmount.toFixed(2)} MXN`,
     );
 
     return {
-      message: 'Acuerdo de trabajo creado exitosamente',
-      job: formattedJob,
+      message:
+        'Acuerdo enviado y comisión de $50.00 MXN congelada. Esperando aceptación del empleador.',
+      ...result,
     };
   }
 
@@ -196,57 +232,39 @@ export class JobsService {
   }
 
   /**
-   * Confirma un acuerdo de trabajo (PENDING -> CONFIRMED).
-   * Solo el Especialista puede confirmar. Congela $50 MXN en una transacción ACID.
+   * Acepta un acuerdo de trabajo propuesto por el especialista (PENDING -> CONFIRMED).
+   * Solo el Empleador puede aceptar. La comisión de $50 MXN ya fue congelada al enviarse la propuesta.
    */
   async confirmJob(userId: string, jobId: string) {
-    const { job, isSpecialist } = await this.loadAndAuthorizeJob(jobId, userId);
+    const { job, isEmployer } = await this.loadAndAuthorizeJob(jobId, userId);
 
-    if (!isSpecialist) {
+    if (!isEmployer) {
       throw new ForbiddenException(
-        'Solo el especialista asignado puede confirmar el trabajo',
+        'Solo el empleador puede aceptar la propuesta de acuerdo de trabajo',
       );
     }
 
     if (job.status !== JobStatus.PENDING) {
       throw new ConflictException(
-        `No se puede confirmar un trabajo en estado ${job.status}`,
+        `No se puede aceptar un trabajo en estado ${job.status}`,
       );
     }
 
-    const feeAmount = Number(job.feeAmount);
+    const result = await this.transactionManager.runInTransaction(async (tx) => {
+      await this.transitionJobAtomically(tx, jobId, JobStatus.PENDING, {
+        status: JobStatus.CONFIRMED,
+        confirmedAt: new Date(),
+      });
 
-    const result = await this.transactionManager.runInTransaction(
-      async (tx) => {
-        await this.transitionJobAtomically(tx, jobId, JobStatus.PENDING, {
-          status: JobStatus.CONFIRMED,
-          confirmedAt: new Date(),
-        });
+      const updatedJob = await tx.jobAgreement.findUniqueOrThrow({
+        where: { id: jobId },
+        include: JOB_WITH_ROOM_INCLUDE,
+      });
 
-        const walletResult = await this.walletService.freezeBalance({
-          userId: job.room.specialistId,
-          amount: feeAmount,
-          jobAgreementId: jobId,
-          description: this.buildMovementDescription(
-            'Congelamiento por confirmación de trabajo',
-            job.title,
-            jobId,
-          ),
-          tx,
-        });
-
-        const updatedJob = await tx.jobAgreement.findUniqueOrThrow({
-          where: { id: jobId },
-          include: JOB_WITH_ROOM_INCLUDE,
-        });
-
-        return {
-          job: this.formatJob(updatedJob),
-          wallet: walletResult.wallet,
-          transaction: walletResult.transaction,
-        };
-      },
-    );
+      return {
+        job: this.formatJob(updatedJob),
+      };
+    });
 
     this.emitJobEvent(
       'job_updated',
@@ -257,11 +275,11 @@ export class JobsService {
     );
 
     this.logger.log(
-      `Trabajo ${jobId} confirmado por especialista ${userId}. Cuota congelada: $${feeAmount.toFixed(2)} MXN`,
+      `Acuerdo ${jobId} aceptado por empleador ${userId}. Trabajo en curso.`,
     );
 
     return {
-      message: 'Trabajo confirmado y cuota congelada exitosamente',
+      message: 'Acuerdo aceptado exitosamente. El trabajo está en curso.',
       ...result,
     };
   }
@@ -281,43 +299,41 @@ export class JobsService {
 
     if (job.status !== JobStatus.CONFIRMED) {
       throw new ConflictException(
-        `Solo se puede completar un trabajo confirmado (estado actual: ${job.status})`,
+        `Solo se puede completar un trabajo aceptado (estado actual: ${job.status})`,
       );
     }
 
     const feeAmount = Number(job.feeAmount);
 
-    const result = await this.transactionManager.runInTransaction(
-      async (tx) => {
-        await this.transitionJobAtomically(tx, jobId, JobStatus.CONFIRMED, {
-          status: JobStatus.COMPLETED,
-          completedAt: new Date(),
-        });
+    const result = await this.transactionManager.runInTransaction(async (tx) => {
+      await this.transitionJobAtomically(tx, jobId, JobStatus.CONFIRMED, {
+        status: JobStatus.COMPLETED,
+        completedAt: new Date(),
+      });
 
-        const walletResult = await this.walletService.captureFrozenBalance({
-          userId: job.room.specialistId,
-          amount: feeAmount,
-          jobAgreementId: jobId,
-          description: this.buildMovementDescription(
-            'Pago de cuota por trabajo completado',
-            job.title,
-            jobId,
-          ),
-          tx,
-        });
+      const walletResult = await this.walletService.captureFrozenBalance({
+        userId: job.room.specialistId,
+        amount: feeAmount,
+        jobAgreementId: jobId,
+        description: this.buildMovementDescription(
+          'Pago de comisión por trabajo completado',
+          job.title,
+          jobId,
+        ),
+        tx,
+      });
 
-        const updatedJob = await tx.jobAgreement.findUniqueOrThrow({
-          where: { id: jobId },
-          include: JOB_WITH_ROOM_INCLUDE,
-        });
+      const updatedJob = await tx.jobAgreement.findUniqueOrThrow({
+        where: { id: jobId },
+        include: JOB_WITH_ROOM_INCLUDE,
+      });
 
-        return {
-          job: this.formatJob(updatedJob),
-          wallet: walletResult.wallet,
-          transaction: walletResult.transaction,
-        };
-      },
-    );
+      return {
+        job: this.formatJob(updatedJob),
+        wallet: walletResult.wallet,
+        transaction: walletResult.transaction,
+      };
+    });
 
     this.emitJobEvent(
       'job_updated',
@@ -328,21 +344,22 @@ export class JobsService {
     );
 
     this.logger.log(
-      `Trabajo ${jobId} completado por empleador ${userId}. Cuota cobrada: $${feeAmount.toFixed(2)} MXN`,
+      `Trabajo ${jobId} completado por empleador ${userId}. Comisión cobrada: $${feeAmount.toFixed(2)} MXN`,
     );
 
     return {
-      message: 'Trabajo completado y cuota descontada exitosamente',
+      message: 'Trabajo marcado como completado exitosamente',
       ...result,
     };
   }
 
   /**
-   * Cancela un trabajo antes de completarse (PENDING | CONFIRMED -> CANCELLED).
-   * Ambos participantes pueden cancelar. Si estaba CONFIRMED, revierte el saldo congelado.
+   * Rechaza o cancela un acuerdo antes de completarse (PENDING | CONFIRMED -> CANCELLED).
+   * Ambos participantes pueden cancelar (y el empleador puede rechazar una propuesta PENDING).
+   * Ejecuta rollback atómico devolviendo la comisión congelada de $50 MXN al saldo disponible del especialista.
    */
   async cancelJob(userId: string, jobId: string, dto?: CancelJobDto) {
-    const { job } = await this.loadAndAuthorizeJob(jobId, userId);
+    const { job, isEmployer } = await this.loadAndAuthorizeJob(jobId, userId);
 
     if (
       job.status === JobStatus.COMPLETED ||
@@ -355,62 +372,78 @@ export class JobsService {
 
     const feeAmount = Number(job.feeAmount);
 
-    const result = await this.transactionManager.runInTransaction(
-      async (tx) => {
-        const currentJob = await tx.jobAgreement.findUnique({
-          where: { id: jobId },
+    const result = await this.transactionManager.runInTransaction(async (tx) => {
+      const currentJob = await tx.jobAgreement.findUnique({
+        where: { id: jobId },
+      });
+
+      if (
+        !currentJob ||
+        currentJob.status === JobStatus.COMPLETED ||
+        currentJob.status === JobStatus.CANCELLED
+      ) {
+        throw new ConflictException(
+          `No se puede cancelar un trabajo en estado ${currentJob?.status ?? 'desconocido'}`,
+        );
+      }
+
+      const previousStatus = currentJob.status;
+
+      await this.transitionJobAtomically(tx, jobId, previousStatus, {
+        status: JobStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelledById: userId,
+        cancellationReason: dto?.reason?.trim() || null,
+      });
+
+      let wallet: Record<string, unknown> | null = null;
+      let transaction: Record<string, unknown> | null = null;
+
+      // Verificar si hubo congelamiento previo para este acuerdo (soporta también registros heredados)
+      const freezeTx =
+        tx.transaction && typeof tx.transaction.findFirst === 'function'
+          ? await tx.transaction.findFirst({
+              where: {
+                jobAgreementId: jobId,
+                tipo: TransactionType.CONGELAMIENTO,
+              },
+            })
+          : true;
+
+      if (freezeTx) {
+        const actionLabel =
+          previousStatus === JobStatus.PENDING && isEmployer
+            ? 'Devolución de comisión por propuesta rechazada'
+            : 'Devolución de comisión por cancelación de trabajo';
+
+        const walletResult = await this.walletService.releaseFrozenBalance({
+          userId: job.room.specialistId,
+          amount: feeAmount,
+          jobAgreementId: jobId,
+          description: this.buildMovementDescription(
+            actionLabel,
+            job.title,
+            jobId,
+          ),
+          tx,
         });
+        wallet = walletResult.wallet;
+        transaction = walletResult.transaction;
+      }
 
-        if (
-          !currentJob ||
-          currentJob.status === JobStatus.COMPLETED ||
-          currentJob.status === JobStatus.CANCELLED
-        ) {
-          throw new ConflictException(
-            `No se puede cancelar un trabajo en estado ${currentJob?.status ?? 'desconocido'}`,
-          );
-        }
+      const updatedJob = await tx.jobAgreement.findUniqueOrThrow({
+        where: { id: jobId },
+        include: JOB_WITH_ROOM_INCLUDE,
+      });
 
-        const previousStatus = currentJob.status;
-
-        await this.transitionJobAtomically(tx, jobId, previousStatus, {
-          status: JobStatus.CANCELLED,
-          cancelledAt: new Date(),
-          cancelledById: userId,
-          cancellationReason: dto?.reason?.trim() || null,
-        });
-
-        let wallet: Record<string, unknown> | null = null;
-        let transaction: Record<string, unknown> | null = null;
-
-        if (previousStatus === JobStatus.CONFIRMED) {
-          const walletResult = await this.walletService.releaseFrozenBalance({
-            userId: job.room.specialistId,
-            amount: feeAmount,
-            jobAgreementId: jobId,
-            description: this.buildMovementDescription(
-              'Devolución de cuota por cancelación de trabajo',
-              job.title,
-              jobId,
-            ),
-            tx,
-          });
-          wallet = walletResult.wallet;
-          transaction = walletResult.transaction;
-        }
-
-        const updatedJob = await tx.jobAgreement.findUniqueOrThrow({
-          where: { id: jobId },
-          include: JOB_WITH_ROOM_INCLUDE,
-        });
-
-        return {
-          job: this.formatJob(updatedJob),
-          wallet,
-          transaction,
-        };
-      },
-    );
+      return {
+        job: this.formatJob(updatedJob),
+        wallet,
+        transaction,
+        wasRejectedByEmployer:
+          previousStatus === JobStatus.PENDING && isEmployer,
+      };
+    });
 
     this.emitJobEvent(
       'job_updated',
@@ -424,11 +457,17 @@ export class JobsService {
       `Trabajo ${jobId} cancelado por usuario ${userId}${result.transaction ? ` (rollback de $${feeAmount.toFixed(2)} MXN aplicado)` : ''}`,
     );
 
+    const message = result.wasRejectedByEmployer
+      ? 'Propuesta rechazada exitosamente'
+      : !isEmployer && result.transaction
+        ? 'Trabajo cancelado y comisión devuelta al saldo disponible'
+        : 'Acuerdo de trabajo cancelado exitosamente';
+
     return {
-      message: result.transaction
-        ? 'Trabajo cancelado y cuota devuelta al saldo disponible'
-        : 'Acuerdo de trabajo cancelado exitosamente',
-      ...result,
+      message,
+      job: result.job,
+      wallet: result.wallet,
+      transaction: result.transaction,
     };
   }
 
