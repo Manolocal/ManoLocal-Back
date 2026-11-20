@@ -160,6 +160,11 @@ export class ChatService {
             name: true,
             email: true,
             role: true,
+            profile: {
+              select: {
+                fullName: true,
+              },
+            },
           },
         },
       },
@@ -202,6 +207,11 @@ export class ChatService {
               name: true,
               email: true,
               role: true,
+              profile: {
+                select: {
+                  fullName: true,
+                },
+              },
             },
           },
         },

@@ -33,13 +33,23 @@ export class JobsController {
 
   @Post()
   @ApiOperation({
-    summary: 'Crear un acuerdo de trabajo en una sala de chat (estado PENDING)',
+    summary:
+      'Enviar propuesta de acuerdo de trabajo y congelar comisión de $50 MXN (solo Especialista)',
     description:
-      'Permite al Empleador o Especialista de la sala formalizar una propuesta de trabajo antes de confirmarla.',
+      'Solo el Especialista de la sala envía la propuesta aceptando la comisión; congela $50 MXN en transacción ACID y deja el acuerdo en estado PENDING esperando respuesta del Empleador.',
   })
   @ApiResponse({
     status: 201,
-    description: 'Acuerdo de trabajo creado exitosamente en estado PENDING.',
+    description:
+      'Propuesta creada en estado PENDING y comisión de $50 MXN congelada.',
+  })
+  @ApiResponse({
+    status: 402,
+    description: 'Saldo disponible insuficiente (< $50 MXN) en la billetera del especialista.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Solo el especialista de la sala puede enviar una propuesta.',
   })
   @ApiResponse({
     status: 409,
@@ -106,23 +116,18 @@ export class JobsController {
   @Patch(':id/confirm')
   @ApiOperation({
     summary:
-      'Confirmar trabajo y congelar cuota de $50 MXN (PENDING -> CONFIRMED)',
+      'Aceptar propuesta de trabajo (PENDING -> CONFIRMED, solo Empleador)',
     description:
-      'Ejecuta una transacción ACID: valida que el Especialista cuente con al menos $50 MXN disponibles, congela el monto en la billetera, registra CONGELAMIENTO y cambia el trabajo a CONFIRMED.',
+      'Permite al Empleador aceptar el acuerdo propuesto por el Especialista cuya comisión de $50 MXN ya fue congelada.',
   })
   @ApiParam({ name: 'id', description: 'UUID del acuerdo de trabajo' })
   @ApiResponse({
     status: 200,
-    description: 'Trabajo confirmado y saldo congelado correctamente.',
-  })
-  @ApiResponse({
-    status: 402,
-    description:
-      'Saldo disponible insuficiente (< $50 MXN) en la billetera del especialista.',
+    description: 'Acuerdo aceptado exitosamente. Trabajo en curso.',
   })
   @ApiResponse({
     status: 403,
-    description: 'Solo el especialista de la sala puede confirmar el trabajo.',
+    description: 'Solo el empleador de la sala puede aceptar la propuesta.',
   })
   async confirmJob(
     @CurrentUser() user: AuthUser,

@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -55,5 +56,17 @@ export class CreateJobDto {
       'El precio acordado debe ser un monto positivo mayor a cero con hasta 2 decimales',
   })
   agreedPrice?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Confirmación explícita del especialista aceptando congelar la comisión de plataforma ($50 MXN) al enviar el acuerdo',
+    example: true,
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean({
+    message: 'La aceptación de comisión debe ser un valor booleano',
+  })
+  acceptCommission?: boolean;
 }
 

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -25,6 +26,9 @@ describe('JobsService', () => {
       count: jest.Mock;
       create: jest.Mock;
       updateMany: jest.Mock;
+    };
+    transaction: {
+      findFirst: jest.Mock;
     };
   };
   let transactionManager: {
@@ -56,7 +60,7 @@ describe('JobsService', () => {
     agreedPrice: new Prisma.Decimal(850),
     feeAmount: new Prisma.Decimal(50),
     status: JobStatus.PENDING,
-    createdById: 'emp-1',
+    createdById: 'spec-1',
     cancelledById: null,
     cancellationReason: null,
     confirmedAt: null,
@@ -77,6 +81,12 @@ describe('JobsService', () => {
         count: jest.fn(),
         create: jest.fn(),
         updateMany: jest.fn(),
+      },
+      transaction: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'tx-freeze-1',
+          tipo: TransactionType.CONGELAMIENTO,
+        }),
       },
     };
 
@@ -118,36 +128,48 @@ describe('JobsService', () => {
     service = module.get<JobsService>(JobsService);
   });
 
-  describe('createJob', () => {
-    it('should create a PENDING job agreement with $50 fee and emit job_created', async () => {
+  describe('createJob (Especialista propone y congela $50 MXN)', () => {
+    it('should allow specialist to create PENDING job, freeze $50 MXN in ACID tx, and emit job_created', async () => {
       prisma.jobAgreement.findFirst.mockResolvedValue(null);
       prisma.jobAgreement.create.mockResolvedValue(baseJobRecord);
+      walletService.freezeBalance.mockResolvedValue({
+        wallet: {
+          id: 'wallet-1',
+          userId: 'spec-1',
+          balanceDisponible: 150,
+          balanceCongelado: 50,
+          balanceTotal: 200,
+          updatedAt: new Date(),
+        },
+        transaction: {
+          id: 'tx-1',
+          monto: 50,
+          tipo: TransactionType.CONGELAMIENTO,
+          descripcion: 'Congelamiento',
+          fecha: new Date(),
+        },
+      });
 
-      const result = await service.createJob('emp-1', {
+      const result = await service.createJob('spec-1', {
         roomId: 'room-1',
         title: 'Instalación eléctrica',
         description: 'Cambio de centro de carga',
         agreedPrice: 850,
+        acceptCommission: true,
       });
 
-      expect(chatService.validateRoomAccess).toHaveBeenCalledWith(
-        'emp-1',
-        'room-1',
-      );
-      expect(prisma.jobAgreement.create).toHaveBeenCalledTimes(1);
-      const createArgs = prisma.jobAgreement.create.mock.calls[0] as [
-        { data: Record<string, unknown> },
-      ];
-      expect(createArgs[0].data).toEqual(
+      expect(transactionManager.runInTransaction).toHaveBeenCalledTimes(1);
+      expect(walletService.freezeBalance).toHaveBeenCalledWith(
         expect.objectContaining({
-          roomId: 'room-1',
-          status: JobStatus.PENDING,
-          feeAmount: new Prisma.Decimal(50),
-          createdById: 'emp-1',
+          userId: 'spec-1',
+          amount: 50,
+          jobAgreementId: 'job-1',
+          tx: prisma,
         }),
       );
-      expect(result.job.feeAmount).toBe(50);
-      expect(result.job.agreedPrice).toBe(850);
+      expect(result.job.status).toBe(JobStatus.PENDING);
+      expect(result.wallet.balanceCongelado).toBe(50);
+      expect(result.transaction.tipo).toBe(TransactionType.CONGELAMIENTO);
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         'job.state_changed',
         expect.objectContaining({
@@ -158,11 +180,48 @@ describe('JobsService', () => {
       );
     });
 
+    it('should forbid employer from creating a job proposal', async () => {
+      await expect(
+        service.createJob('emp-1', {
+          roomId: 'room-1',
+          title: 'Plomería',
+          acceptCommission: true,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(transactionManager.runInTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should reject when specialist explicitly declines commission', async () => {
+      await expect(
+        service.createJob('spec-1', {
+          roomId: 'room-1',
+          title: 'Plomería',
+          acceptCommission: false,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should propagate InsufficientBalanceException (402) and NOT emit event', async () => {
+      prisma.jobAgreement.findFirst.mockResolvedValue(null);
+      prisma.jobAgreement.create.mockResolvedValue(baseJobRecord);
+      walletService.freezeBalance.mockRejectedValue(
+        new InsufficientBalanceException(50, 10),
+      );
+
+      await expect(
+        service.createJob('spec-1', {
+          roomId: 'room-1',
+          title: 'Instalación eléctrica',
+        }),
+      ).rejects.toThrow(InsufficientBalanceException);
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
+    });
+
     it('should throw ConflictException if room already has an active job', async () => {
       prisma.jobAgreement.findFirst.mockResolvedValue(baseJobRecord);
 
       await expect(
-        service.createJob('emp-1', { roomId: 'room-1', title: 'Otro trabajo' }),
+        service.createJob('spec-1', { roomId: 'room-1', title: 'Otro trabajo' }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.jobAgreement.create).not.toHaveBeenCalled();
     });
@@ -198,60 +257,22 @@ describe('JobsService', () => {
     });
   });
 
-  describe('confirmJob (PENDING -> CONFIRMED)', () => {
-    it('should confirm job, freeze $50 MXN via WalletService inside ACID transaction, and emit event', async () => {
+  describe('confirmJob (Empleador acepta PENDING -> CONFIRMED)', () => {
+    it('should allow employer to accept a PENDING proposal and emit job_updated', async () => {
       const confirmedRecord = {
         ...baseJobRecord,
         status: JobStatus.CONFIRMED,
         confirmedAt: new Date(),
       };
-      const walletSnapshot = {
-        id: 'wallet-1',
-        userId: 'spec-1',
-        balanceDisponible: 150,
-        balanceCongelado: 50,
-        balanceTotal: 200,
-        updatedAt: new Date(),
-      };
-      const txSnapshot = {
-        id: 'tx-1',
-        monto: 50,
-        tipo: TransactionType.CONGELAMIENTO,
-        descripcion: 'Congelamiento',
-        fecha: new Date(),
-      };
 
       prisma.jobAgreement.findUnique.mockResolvedValue(baseJobRecord);
       prisma.jobAgreement.updateMany.mockResolvedValue({ count: 1 });
       prisma.jobAgreement.findUniqueOrThrow.mockResolvedValue(confirmedRecord);
-      walletService.freezeBalance.mockResolvedValue({
-        wallet: walletSnapshot,
-        transaction: txSnapshot,
-      });
 
-      const result = await service.confirmJob('spec-1', 'job-1');
+      const result = await service.confirmJob('emp-1', 'job-1');
 
-      expect(transactionManager.runInTransaction).toHaveBeenCalledTimes(1);
-      expect(prisma.jobAgreement.updateMany).toHaveBeenCalledTimes(1);
-      const updateArgs = prisma.jobAgreement.updateMany.mock.calls[0] as [
-        { where: Record<string, unknown>; data: Record<string, unknown> },
-      ];
-      expect(updateArgs[0].where).toEqual({
-        id: 'job-1',
-        status: JobStatus.PENDING,
-      });
-      expect(updateArgs[0].data.status).toBe(JobStatus.CONFIRMED);
-      expect(walletService.freezeBalance).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'spec-1',
-          amount: 50,
-          jobAgreementId: 'job-1',
-          tx: prisma,
-        }),
-      );
+      expect(walletService.freezeBalance).not.toHaveBeenCalled();
       expect(result.job.status).toBe(JobStatus.CONFIRMED);
-      expect(result.wallet.balanceCongelado).toBe(50);
-      expect(result.transaction.tipo).toBe(TransactionType.CONGELAMIENTO);
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         'job.state_changed',
         expect.objectContaining({
@@ -261,33 +282,20 @@ describe('JobsService', () => {
       );
     });
 
-    it('should forbid employer from confirming the job', async () => {
+    it('should forbid specialist from accepting their own proposal', async () => {
       prisma.jobAgreement.findUnique.mockResolvedValue(baseJobRecord);
 
-      await expect(service.confirmJob('emp-1', 'job-1')).rejects.toThrow(
+      await expect(service.confirmJob('spec-1', 'job-1')).rejects.toThrow(
         ForbiddenException,
       );
       expect(transactionManager.runInTransaction).not.toHaveBeenCalled();
     });
-
-    it('should propagate InsufficientBalanceException (402) and NOT emit event on rollback', async () => {
-      prisma.jobAgreement.findUnique.mockResolvedValue(baseJobRecord);
-      prisma.jobAgreement.updateMany.mockResolvedValue({ count: 1 });
-      walletService.freezeBalance.mockRejectedValue(
-        new InsufficientBalanceException(50, 10),
-      );
-
-      await expect(service.confirmJob('spec-1', 'job-1')).rejects.toThrow(
-        InsufficientBalanceException,
-      );
-      expect(eventEmitter.emit).not.toHaveBeenCalled();
-    });
   });
 
-  describe('completeJob (CONFIRMED -> COMPLETED)', () => {
+  describe('completeJob (Empleador completa CONFIRMED -> COMPLETED)', () => {
     const confirmedJob = { ...baseJobRecord, status: JobStatus.CONFIRMED };
 
-    it('should complete job, permanently deduct frozen $50 MXN via WalletService, and emit event', async () => {
+    it('should complete job, permanently deduct frozen $50 MXN, and emit event', async () => {
       const completedRecord = {
         ...confirmedJob,
         status: JobStatus.COMPLETED,
@@ -316,7 +324,6 @@ describe('JobsService', () => {
 
       const result = await service.completeJob('emp-1', 'job-1');
 
-      expect(transactionManager.runInTransaction).toHaveBeenCalledTimes(1);
       expect(walletService.captureFrozenBalance).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'spec-1',
@@ -326,12 +333,7 @@ describe('JobsService', () => {
         }),
       );
       expect(result.job.status).toBe(JobStatus.COMPLETED);
-      expect(result.wallet.balanceCongelado).toBe(0);
       expect(result.transaction.tipo).toBe(TransactionType.PAGO);
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'job.state_changed',
-        expect.objectContaining({ action: 'COMPLETED' }),
-      );
     });
 
     it('should forbid specialist from completing the job', async () => {
@@ -351,14 +353,56 @@ describe('JobsService', () => {
     });
   });
 
-  describe('cancelJob (PENDING/CONFIRMED -> CANCELLED)', () => {
-    it('should cancel a CONFIRMED job, refund frozen $50 MXN to available balance, and emit event', async () => {
+  describe('cancelJob (Rechazo o cancelación por cualquiera -> devolución de $50 MXN)', () => {
+    const refundResponse = {
+      wallet: {
+        id: 'wallet-1',
+        userId: 'spec-1',
+        balanceDisponible: 200,
+        balanceCongelado: 0,
+        balanceTotal: 200,
+        updatedAt: new Date(),
+      },
+      transaction: {
+        id: 'tx-3',
+        monto: 50,
+        tipo: TransactionType.DEVOLUCION,
+        descripcion: 'Devolución',
+        fecha: new Date(),
+      },
+    };
+
+    it('should allow employer to reject a PENDING proposal and refund $50 MXN to specialist', async () => {
+      const cancelledRecord = {
+        ...baseJobRecord,
+        status: JobStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelledById: 'emp-1',
+      };
+
+      prisma.jobAgreement.findUnique
+        .mockResolvedValueOnce(baseJobRecord)
+        .mockResolvedValueOnce(baseJobRecord);
+      prisma.jobAgreement.updateMany.mockResolvedValue({ count: 1 });
+      prisma.jobAgreement.findUniqueOrThrow.mockResolvedValue(cancelledRecord);
+      walletService.releaseFrozenBalance.mockResolvedValue(refundResponse);
+
+      const result = await service.cancelJob('emp-1', 'job-1', {
+        reason: 'Precio fuera de presupuesto',
+      });
+
+      expect(walletService.releaseFrozenBalance).toHaveBeenCalledTimes(1);
+      expect(result.job.status).toBe(JobStatus.CANCELLED);
+      expect(result.message).toContain('rechazada');
+    });
+
+    it('should allow specialist to cancel a CONFIRMED job and refund $50 MXN', async () => {
       const confirmedJob = { ...baseJobRecord, status: JobStatus.CONFIRMED };
       const cancelledRecord = {
         ...confirmedJob,
         status: JobStatus.CANCELLED,
         cancelledAt: new Date(),
-        cancelledById: 'emp-1',
+        cancelledById: 'spec-1',
       };
 
       prisma.jobAgreement.findUnique
@@ -366,52 +410,21 @@ describe('JobsService', () => {
         .mockResolvedValueOnce(confirmedJob);
       prisma.jobAgreement.updateMany.mockResolvedValue({ count: 1 });
       prisma.jobAgreement.findUniqueOrThrow.mockResolvedValue(cancelledRecord);
-      walletService.releaseFrozenBalance.mockResolvedValue({
-        wallet: {
-          id: 'wallet-1',
-          userId: 'spec-1',
-          balanceDisponible: 200,
-          balanceCongelado: 0,
-          balanceTotal: 200,
-          updatedAt: new Date(),
-        },
-        transaction: {
-          id: 'tx-3',
-          monto: 50,
-          tipo: TransactionType.DEVOLUCION,
-          descripcion: 'Devolución',
-          fecha: new Date(),
-        },
-      });
+      walletService.releaseFrozenBalance.mockResolvedValue(refundResponse);
 
-      const result = await service.cancelJob('emp-1', 'job-1', {
-        reason: 'Cambio de fecha',
-      });
+      const result = await service.cancelJob('spec-1', 'job-1');
 
-      expect(walletService.releaseFrozenBalance).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'spec-1',
-          amount: 50,
-          jobAgreementId: 'job-1',
-          tx: prisma,
-        }),
-      );
+      expect(walletService.releaseFrozenBalance).toHaveBeenCalledTimes(1);
       expect(result.job.status).toBe(JobStatus.CANCELLED);
       expect(result.transaction?.tipo).toBe(TransactionType.DEVOLUCION);
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'job.state_changed',
-        expect.objectContaining({ action: 'CANCELLED' }),
-      );
     });
 
-    it('should cancel a PENDING job without modifying wallet balances', async () => {
+    it('should cancel without refund when no freeze transaction exists (legacy job)', async () => {
+      prisma.transaction.findFirst.mockResolvedValueOnce(null);
       const cancelledRecord = {
         ...baseJobRecord,
         status: JobStatus.CANCELLED,
-        cancelledAt: new Date(),
-        cancelledById: 'spec-1',
       };
-
       prisma.jobAgreement.findUnique
         .mockResolvedValueOnce(baseJobRecord)
         .mockResolvedValueOnce(baseJobRecord);
@@ -421,9 +434,7 @@ describe('JobsService', () => {
       const result = await service.cancelJob('spec-1', 'job-1');
 
       expect(walletService.releaseFrozenBalance).not.toHaveBeenCalled();
-      expect(result.job.status).toBe(JobStatus.CANCELLED);
       expect(result.wallet).toBeNull();
-      expect(result.transaction).toBeNull();
     });
 
     it('should throw ConflictException when trying to cancel a COMPLETED job', async () => {

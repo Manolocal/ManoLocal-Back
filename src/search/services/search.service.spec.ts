@@ -170,4 +170,43 @@ describe('SearchService', () => {
       );
     });
   });
+
+  describe('buildFlexibleSkillTerms (búsqueda flexible de oficios)', () => {
+    it('expande "plomero" para encontrar "Plomería residencial", "plomeria" y "fontanero"', () => {
+      const terms = service.buildFlexibleSkillTerms('plomero');
+      expect(terms).toEqual(
+        expect.arrayContaining(['plomero', 'plomer', 'plomería', 'plomeria']),
+      );
+    });
+
+    it('permite frases con múltiples palabras como "plomero urgente residencial" sin contaminar con calificativos genéricos', () => {
+      const terms = service.buildFlexibleSkillTerms(
+        'plomero urgente residencial',
+      );
+      expect(terms).toEqual(
+        expect.arrayContaining(['plomero', 'plomer', 'plomería']),
+      );
+      expect(terms).not.toContain('residencial');
+      expect(terms).not.toContain('urgente');
+    });
+
+    it('encuentra variantes con ñ/acentos como "albanil" -> "albañilería" y "electricista" -> "electricidad"', () => {
+      const albanilTerms = service.buildFlexibleSkillTerms('albanil');
+      expect(albanilTerms).toEqual(
+        expect.arrayContaining(['albanil', 'albañil', 'albañilería']),
+      );
+
+      const elecTerms = service.buildFlexibleSkillTerms('electricista');
+      expect(elecTerms).toEqual(
+        expect.arrayContaining(['electricista', 'electricidad', 'electr']),
+      );
+    });
+
+    it('permite buscar términos compuestos como "Clima / A/C"', () => {
+      const terms = service.buildFlexibleSkillTerms('Clima / A/C');
+      expect(terms).toEqual(
+        expect.arrayContaining(['clima', 'a/c', 'aire acondicionado']),
+      );
+    });
+  });
 });
